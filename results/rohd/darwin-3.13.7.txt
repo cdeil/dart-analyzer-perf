@@ -51,3 +51,22 @@ elapsed_seconds=0.935 user_seconds=0.522 system_seconds=0.323
 
 === Plugin bootstrap/AOT preparation (excluded from comparison) ===
 Analyzing rohd...
+No issues found!
+elapsed_seconds=21.914 user_seconds=14.507 system_seconds=4.741
+
+=== No-op semantic plugin, unchanged pass 1 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=1.981 user_seconds=2.023 system_seconds=0.636
+
+=== No-op semantic plugin, unchanged pass 2 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=1.955 user_seconds=2.030 system_seconds=0.781
+
+=== No-op semantic plugin, unchanged pass 3 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=2.102 user_seconds=2.138 system_seconds=0.991
+
+Benchmark complete. Results saved to /Users/kryvoff/code/projects/dart-analyzer-perf/results/rohd/darwin-3.13.7.txt
