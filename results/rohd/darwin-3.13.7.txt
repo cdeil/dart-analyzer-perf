@@ -1,0 +1,53 @@
+ROHD analyzer plugin cache reproduction
+timestamp_utc=2026-10-26T21:52:55Z
+commit=0ecf0cde82b8f53d1a5bcdd5122ea971513fe132
+platform=Darwin cmac.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:06:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6050 arm64
+Dart SDK version: 3.13.7 (stable) (Thu Oct 22 14:28:57 2026 -0700) on "macos_arm64"
+iterations=3
+
+Resolving dependencies...
+Resolving dependencies...
+Downloading packages...
+Got dependencies!
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 108.0.0 (110.0.0 available)
+  analysis_server_plugin 0.3.23 (0.3.25 available)
+  analyzer 14.4.0 (14.6.0 available)
+  analyzer_plugin 0.14.17 (0.14.19 available)
+Got dependencies!
+4 packages have newer versions incompatible with dependency constraints.
+Try `dart pub outdated` for more information.
+
+=== Native analyzer, default persistent cache, pass 1 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=2.040 user_seconds=1.669 system_seconds=0.916
+
+=== Native analyzer, default persistent cache, pass 2 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=1.248 user_seconds=1.128 system_seconds=0.746
+
+=== Native analyzer, default persistent cache, pass 3 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=0.887 user_seconds=0.598 system_seconds=0.406
+
+=== Native analyzer, isolated cache, pass 1 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=1.739 user_seconds=1.329 system_seconds=0.478
+
+=== Native analyzer, isolated cache, pass 2 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=1.326 user_seconds=1.015 system_seconds=0.512
+
+=== Native analyzer, isolated cache, pass 3 ===
+Analyzing rohd...
+No issues found!
+elapsed_seconds=0.935 user_seconds=0.522 system_seconds=0.323
+
+=== Plugin bootstrap/AOT preparation (excluded from comparison) ===
+Analyzing rohd...
