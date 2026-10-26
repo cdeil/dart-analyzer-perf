@@ -1,0 +1,6 @@
+# Dart tooling state inside fixtures
+**/.dart_tool/
+**/build/
+*.aot
+# Local scratch; regenerable data lives under ~/data/dart-analyzer-perf
+/scratch/
