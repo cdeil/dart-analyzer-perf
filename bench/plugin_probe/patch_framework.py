@@ -19,7 +19,7 @@ from pathlib import Path
 DEFAULT_SOURCE = Path.home() / '.pub-cache/hosted/pub.dev/analysis_server_plugin-0.3.25'
 
 
-def patch(source: Path, dest: Path):
+def patch(source: Path, dest: Path, tolerant: bool = False):
     if dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(source, dest, symlinks=False)
@@ -28,7 +28,11 @@ def patch(source: Path, dest: Path):
 
     def replace_once(old, new):
         nonlocal s
-        assert s.count(old) == 1, f'expected exactly one match for: {old[:80]!r}'
+        if s.count(old) != 1:
+            if tolerant:
+                print(f'skipped (anchor not found once): {old.strip().splitlines()[0][:70]!r}')
+                return
+            raise AssertionError(f'expected exactly one match for: {old[:80]!r}')
         s = s.replace(old, new)
 
     replace_once(
@@ -347,8 +351,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--source', default=str(DEFAULT_SOURCE))
     p.add_argument('--dest', required=True)
+    p.add_argument('--tolerant', action='store_true', help='skip probes whose anchor text is missing (patched SDK branches)')
     a = p.parse_args()
-    patch(Path(a.source), Path(a.dest))
+    patch(Path(a.source), Path(a.dest), a.tolerant)
 
 
 if __name__ == '__main__':

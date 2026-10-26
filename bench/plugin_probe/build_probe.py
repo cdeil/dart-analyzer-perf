@@ -23,11 +23,22 @@ def main():
     p.add_argument('--framework-version', default='0.3.25')
     p.add_argument('--dart', default=os.environ.get('DART_BIN', 'dart'))
     p.add_argument('--name', default='default', help='harness variant name under the data directory')
+    p.add_argument('--sdk-pkg', default='', help='pkg/ directory of a Dart SDK checkout; overrides the analyzer packages with it')
     a = p.parse_args()
     harness = DATA / 'harness' / a.name
-    patched = DATA / 'patched' / f'analysis_server_plugin-{a.framework_version}'
-    source = Path.home() / f'.pub-cache/hosted/pub.dev/analysis_server_plugin-{a.framework_version}'
-    subprocess.run(['python3', '-I', str(HERE / 'patch_framework.py'), '--source', str(source), '--dest', str(patched)], check=True)
+    patched = DATA / 'patched' / f'analysis_server_plugin-{a.name}'
+    if a.sdk_pkg:
+        source = Path(a.sdk_pkg) / 'analysis_server_plugin'
+    else:
+        source = Path.home() / f'.pub-cache/hosted/pub.dev/analysis_server_plugin-{a.framework_version}'
+    subprocess.run(['python3', '-I', str(HERE / 'patch_framework.py'), '--source', str(source), '--dest', str(patched), '--tolerant'], check=True)
+    overrides = f'''dependency_overrides:
+  analysis_server_plugin:
+    path: {patched}
+'''
+    if a.sdk_pkg:
+        for pkg in ['analyzer', '_fe_analyzer_shared', 'analyzer_plugin']:
+            overrides += f'  {pkg}:\n    path: {Path(a.sdk_pkg) / pkg}\n'
     (harness / 'bin').mkdir(parents=True, exist_ok=True)
     shutil.copy(HERE / 'probe.dart', harness / 'bin/probe.dart')
     (harness / 'pubspec.yaml').write_text(f'''name: probe_harness
@@ -41,10 +52,7 @@ dependencies:
   analyzer_plugin: any
   path: any
   riverpod_lint: {a.riverpod_lint}
-dependency_overrides:
-  analysis_server_plugin:
-    path: {patched}
-''')
+{overrides}''')
     env = dict(os.environ, CI='true')
     subprocess.run([a.dart, 'pub', 'get'], cwd=harness, env=env, check=True)
     subprocess.run([a.dart, 'compile', 'aot-snapshot', 'bin/probe.dart', '-o', 'probe.aot'], cwd=harness, env=env, check=True)

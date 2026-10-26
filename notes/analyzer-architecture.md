@@ -137,8 +137,9 @@ with `--with-fine-dependencies`.
 `pkg/analyzer/lib/src/dart/analysis/file_byte_store.dart`: `FileByteStore` writes
 `<key[0:2]>/<key>` files through a bounded async pool, validated by length and a 16-bit
 checksum on read. `EvictingFileByteStore` adds a cleanup isolate that runs at construction
-and after every `maxSize/8` bytes written, deleting oldest-mtime files until the directory
-is under budget (4 GiB by default in the analysis server). Reads do not touch mtime. A
+and after every `maxSize/8` bytes written, deleting the least recently *accessed* files
+(`FileStat.accessed`) until the directory is under budget (4 GiB by default in the analysis
+server); whether a read refreshes that timestamp depends on the file system's atime policy. A
 busy IDE on several worktrees and SDK versions keeps the directory at the budget (this
 machine: 4.7 GB, 332k files, 220k of them written in the last week), and the startup scan
 of such a directory costs the warm host about 2 s per CLI run. `SingleFileByteStore`
