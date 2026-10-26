@@ -19,7 +19,8 @@ plugin reports that analysis is complete.
 | 2 | `driver-recent-libraries` | tests pass (full driver suite 1,294, plugin 47), analyzer clean | `ResolvedUnitResult` events 1,330 → 665, `analyzeFile` 1,330 → 665; cold 4.1 to 4.5 (main 4.4 to 4.7); warm with the probe's file store 1.32 to 1.36 (main 1.54 to 1.57) |
 | 3 | `plugin-fine-dependencies` | tests pass (plugin 49, plugin_isolate 23, plugin_manager 36, analyzer_plugin 1,183), analysis clean | plugin defaults to the host's setting (off): cold 3.4, 3.8 (main 4.4 to 4.7); warm with the probe's file store 1.28 to 1.30 (main 1.54 to 1.57); `computeManifests` gone, `link` 1.67 → 1.35 s |
 | 4 | `byte-store-scan` | tests pass (8), analyzer clean | not a plugin-side change; saves the start-up directory scan of the server's cache (about 2 s on a 4.7 GB cache in the real-checkout runs) |
-| 5 | `plugin-build-key` | pending | |
+| 5 | `plugin-build-key` | tests pass (watcher 10, manager 36), analysis clean | server-side; no probe measurement (saves the 12 to 30 s plugin compile per additional checkout of the same project) |
+| 1+2+3 | `plugin-perf-combined` | tests pass (plugin 51, driver 16), analysis clean | cold 3.7; **warm 1.10 to 1.17** (main as shipped 4.4 to 4.7); every store lookup a hit, identical findings |
 
 ## 1. `plugin-byte-store`
 
@@ -76,3 +77,23 @@ fills from its options and `PluginIsolate`/`PluginSession.start` forward in the 
 check. `PluginServer` stores the value and uses it in `_createContextCollection` (default
 false, the server's default). Tests: the plugin's driver has fine dependencies off by
 default and on when the version check asks for it.
+
+## 5. `plugin-build-key`
+
+`pkg/analysis_server/lib/src/plugin/plugin_watcher.dart` names the shared plugin folder by
+the generated pubspec content instead of the context root path; `PluginManager.
+pluginStateFolder` keeps hashing its argument with the SDK version. The test mock derives a
+folder from a hash of the key, and the conflicting-plugins watcher test identifies its two
+groups by the constraint in each folder's pubspec instead of a `_group_1` path fragment.
+
+## Combined: `plugin-perf-combined`
+
+Cherry-picks of branches 1, 2 and 3 (two trivial adjacent-insertion conflicts resolved by
+keeping both sides). This is the configuration a `dart analyze` user would get once the
+three changes land: on the fixture the plugin isolate needs 3.7 s on the first run (it
+writes 53 MB of cache) and 1.1 to 1.2 s on later runs, against 4.4 to 4.7 s every run today.
+Scaled to the private 7,481-file workspace, where the plugin isolate takes 12.5 to 15.7 s
+today and the warm host about 2 s, this puts the whole `dart analyze` run at roughly 3 s
+instead of 15 s; the plugin side alone was measured at 2.0 to 2.5 s warm with the first two
+mechanisms and partial rule coverage, and 4.1 to 4.3 s with full coverage before the
+driver cache.

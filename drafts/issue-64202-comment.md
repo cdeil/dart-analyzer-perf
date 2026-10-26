@@ -48,6 +48,14 @@ measurements seem worth folding in or filing separately:
    second pass costs about 1 s per run here; a small bounded cache of recent resolved
    libraries in the driver would remove it.
 
+I ported the change to current main on a branch (plain `FileByteStore` as the
+`EvictingFileByteStore` documentation prescribes for plugins, a guard for non-physical
+resource providers, a flush before the `plugin.shutdown` response, and behavioral tests
+that start two plugin servers on one store directory). With it, plus the two observations
+above applied, the public fixture's plugin isolate goes from 4.4 to 4.7 s per run to
+3.7 s on the first run and 1.1 to 1.2 s afterwards, with identical diagnostics
+(https://github.com/cdeil/dart-analyzer-perf/blob/main/patches/README.md).
+
 On the CL itself, from reading PS1: the suffix only affects temporary writer file names,
 so host and plugin would share permanent entries in `.analysis-driver`, but with the
 stable SDK's analyzer at `DATA_VERSION` 644 and the plugin's at 747 no key is ever shared
@@ -55,5 +63,4 @@ in practice; the shared directory mostly matters for eviction accounting, which 
 open question from this thread. I would propose an `EvictingFileByteStore` owned by the
 plugin (own budget, the CL's `tempNameSuffix`), a `flush()` before the `plugin.shutdown`
 response, and behavioral tests (restart reuse, imported-API change parity, two isolates in
-one directory). I have a port against current main with those pieces and the measurements
-above in the linked repository and can upload it if that is useful.
+one directory). I can upload the port if that is useful.
