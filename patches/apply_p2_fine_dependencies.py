@@ -136,8 +136,69 @@ def patch_host(sdk: Path):
         "      var session = await pluginIsolate.start(_byteStorePath, _sdkPath);\n",
         "      var session = await pluginIsolate.start(\n        _byteStorePath,\n        _sdkPath,\n        withFineDependencies: withFineDependencies,\n      );\n",
     )
+    s = replace_once(
+        s,
+        "  final String _dartVersion;\n",
+        "  final String _dartVersion;\n\n"
+        "  /// Whether the server tracks fine-grained dependencies between libraries;\n"
+        "  /// forwarded to plugins so that they analyze the same way.\n"
+        "  final bool withFineDependencies;\n",
+    )
+    s = replace_once(
+        s,
+        "    this._processRunner = const ProcessRunner(),\n",
+        "    this._processRunner = const ProcessRunner(),\n    this.withFineDependencies = false,\n",
+    )
     f.write_text(s)
-    print('patched', f, '(start call); the constructor parameter is added by hand, see below')
+    print('patched', f)
+
+    f = sdk / 'pkg/analysis_server/lib/src/analysis_server.dart'
+    s = f.read_text()
+    s = replace_once(
+        s,
+        "      processRunner: processRunner ?? ProcessRunner(environment: environment),\n    );\n",
+        "      processRunner: processRunner ?? ProcessRunner(environment: environment),\n"
+        "      withFineDependencies: options.withFineDependencies,\n    );\n",
+    )
+    f.write_text(s)
+    print('patched', f)
+
+
+def patch_tests(sdk: Path):
+    f = sdk / 'pkg/analysis_server_plugin/test/src/plugin_server_test.dart'
+    s = f.read_text()
+    s = replace_once(
+        s,
+        "  Future<void> test_diagnosticsCanBeIgnored() async {\n",
+        """  Future<void> test_versionCheck_fineDependencies_default() async {
+    writeAnalysisOptionsWithPlugin();
+    newFile(filePath, 'bool b = false;');
+    await _setContextRootsAndReadFirstErrors();
+    var driver = pluginServer.contextCollectionForTesting!.contexts.single.driver;
+    expect(driver.withFineDependencies, isFalse);
+  }
+
+  Future<void> test_versionCheck_fineDependencies_enabled() async {
+    await pluginServer.handlePluginVersionCheck(
+      protocol.PluginVersionCheckParams(
+        byteStoreRoot.path,
+        sdkRoot.path,
+        '0.0.1',
+        withFineDependencies: true,
+      ),
+    );
+    writeAnalysisOptionsWithPlugin();
+    newFile(filePath, 'bool b = false;');
+    await _setContextRootsAndReadFirstErrors();
+    var driver = pluginServer.contextCollectionForTesting!.contexts.single.driver;
+    expect(driver.withFineDependencies, isTrue);
+  }
+
+  Future<void> test_diagnosticsCanBeIgnored() async {
+""",
+    )
+    f.write_text(s)
+    print('patched', f)
 
 
 if __name__ == '__main__':
@@ -145,11 +206,5 @@ if __name__ == '__main__':
     patch_spec(sdk)
     patch_plugin_server(sdk)
     patch_host(sdk)
-    print('''
-Manual steps:
- 1. PluginManager: add `this.withFineDependencies = false` as a named constructor
-    parameter and a `final bool withFineDependencies;` field.
- 2. AnalysisServer: pass `withFineDependencies: options.withFineDependencies` where
-    PluginManager is constructed.
- 3. Regenerate the protocol: tools/sdks/dart-sdk/bin/dart pkg/analyzer_plugin/tool/spec/generate_all.dart
-''')
+    patch_tests(sdk)
+    print('Now regenerate the protocol: tools/sdks/dart-sdk/bin/dart pkg/analyzer_plugin/tool/spec/generate_all.dart')

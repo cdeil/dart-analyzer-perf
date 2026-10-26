@@ -16,9 +16,9 @@ plugin reports that analysis is complete.
 | # | Branch | Status | Fixture result (plugin isolate, seconds to idle) |
 | --- | --- | --- | --- |
 | 1 | `plugin-byte-store` | tests pass (49), analyzer clean | main: 4.4, 4.7 cold. Branch: 5.1 cold (first run writes 88 MB), **1.55, 1.57 warm**, identical findings |
-| 2 | `driver-recent-libraries` | tests pass (16 filtered + full suite, see commits) | pending |
+| 2 | `driver-recent-libraries` | tests pass (full driver suite 1,294, plugin 47), analyzer clean | `ResolvedUnitResult` events 1,330 → 665, `analyzeFile` 1,330 → 665; cold 4.1 to 4.5 (main 4.4 to 4.7); warm with the probe's file store 1.32 to 1.36 (main 1.54 to 1.57) |
 | 3 | `plugin-fine-dependencies` | pending | |
-| 4 | `byte-store-scan` | pending | |
+| 4 | `byte-store-scan` | tests pass (8), analyzer clean | not a plugin-side change; saves the start-up directory scan of the server's cache (about 2 s on a 4.7 GB cache in the real-checkout runs) |
 | 5 | `plugin-build-key` | pending | |
 
 ## 1. `plugin-byte-store`
@@ -45,3 +45,23 @@ tools/sdks/dart-sdk/bin/dart pkg/analyzer/test/src/dart/analysis/file_byte_store
 (cd pkg/analyzer && ../../tools/sdks/dart-sdk/bin/dart test test/src/dart/analysis/driver_test.dart -N getResolvedLibrary)
 tools/sdks/dart-sdk/bin/dart analyze pkg/analysis_server_plugin pkg/analyzer
 ```
+
+## 2. `driver-recent-libraries`
+
+`pkg/analyzer/lib/src/dart/analysis/driver.dart`: `_recentResolvedLibraries`, a bounded (8
+entries) insertion-ordered map of `ResolvedLibraryResultImpl`s for libraries without
+priority files, filled in `_analyzeFileImpl`, consulted by `getResolvedLibrary` (and the
+scheduled request path), cleared wherever `_resolvedLibraryCache` is cleared. Test:
+`test_getResolvedLibrary_afterProduceErrors_reusesRecent` asserts no second `analyzeFile`
+after `addFile` + `getResolvedLibrary`, and re-analysis after `changeFile`. Two plugin
+server tests (`test_setConfigurations_*`) relied on the initial analysis not having reported
+before `analysis.setConfigurations`; with diagnostics arriving earlier they now consume the
+initial notifications first.
+
+## 4. `byte-store-scan`
+
+`pkg/analyzer/lib/src/dart/analysis/file_byte_store.dart`: the clean-up isolate writes
+`.clean-up-stamp` in the cache directory when it finishes; `EvictingFileByteStore`'s
+constructor skips the start-up scan while the stamp is younger than an hour. Writes still
+trigger a clean up after `maxSizeBytes / 8`. Tests cover skip, expiry and that the stamp is
+not counted as a cache file.
