@@ -151,7 +151,51 @@ def patch_tests(sdk: Path):
     print('patched', f)
 
 
+def patch_plugin_tests(sdk: Path):
+    """Two plugin server tests read the diagnostics produced after
+    `analysis.setConfigurations` from a queue created after the request, and
+    relied on the initial analysis being slow enough not to have reported
+    anything yet. With the cache the initial diagnostics arrive earlier, so the
+    tests now consume them explicitly before changing the configuration."""
+    f = sdk / 'pkg/analysis_server_plugin/test/src/plugin_server_test.dart'
+    s = f.read_text()
+    for name in ['test_setConfigurations_disabledInSubdirectory', 'test_setConfigurations_differentSeverities']:
+        begin = s.index(f'  Future<void> {name}() async {{')
+        finish = s.index('\n  Future<void> test_', begin + 1)
+        body = s[begin:finish]
+        body = replace_once(
+            body,
+            """    await _setRoots();
+
+    await channel.sendRequest(
+      protocol.AnalysisSetConfigurationsParams({
+""",
+            """    var paramsQueue = _analysisErrorsParams;
+    await _setRoots();
+    // Consume the diagnostics of the initial analysis, so that only those
+    // produced with the new configurations are read below.
+    await paramsQueue.next;
+    await paramsQueue.next;
+
+    await channel.sendRequest(
+      protocol.AnalysisSetConfigurationsParams({
+""",
+        )
+        body = replace_once(
+            body,
+            """    var paramsQueue = _analysisErrorsParams;
+    var params1 = await paramsQueue.next;
+""",
+            """    var params1 = await paramsQueue.next;
+""",
+        )
+        s = s[:begin] + body + s[finish:]
+    f.write_text(s)
+    print('patched', f)
+
+
 if __name__ == '__main__':
     sdk = Path(sys.argv[1])
     patch_driver(sdk)
     patch_tests(sdk)
+    patch_plugin_tests(sdk)
