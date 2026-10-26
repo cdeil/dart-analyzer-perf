@@ -159,3 +159,14 @@ default.
 | Single-file byte store for the plugin | analyzer / analysis_server_plugin | CL 543760 merged standalone |
 | Skip the startup eviction scan when the last one was recent | analyzer EvictingFileByteStore | not filed |
 | Parallel unlinked phase, parallel linking | analyzer | research; CL 559340, 542560 in flight |
+
+## 6. A second public data point: the ROHD reproducer
+
+`bench/rohd_bench.sh` runs the reproducer from dart-lang/sdk#63292 (ROHD v0.6.10, a
+123-file pure-Dart package, plus a no-op semantic plugin rule). On this machine with Dart
+3.13.7 (`results/rohd/darwin-3.13.7.txt`): native analyzer with its persistent cache 2.0,
+1.2, 0.9 s; isolated fresh cache 1.7, 1.3, 0.9 s; no-op plugin 2.0, 2.0, 2.1 s per unchanged
+pass after a 22 s bootstrap. The plugin isolate costs about one cold analysis of the
+package's small closure (dart: libraries and a few packages) on every run, which is the
+same mechanism as on the Flutter workspaces, at a scale where it is 1 s instead of 10 s.
+The 18 s the reporter saw on Dart 3.11.6 is gone in 3.13.
