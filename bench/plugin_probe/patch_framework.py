@@ -4,13 +4,17 @@ The copy is written to DEST (never into the pub cache). The probes do not change
 run or what they report; they only add counters, timing and switches:
 
   PROBE_BYTE_STORE=<dir>   back the 256 MiB memory cache with a FileByteStore in <dir>
+                           (only on sources that still use NullByteStore)
   PROBE_FINE_DEPS=0        create the analysis context with withFineDependencies: false
   PROBE_PRIORITY_ALL=1     mark every analyzed file as a priority file (single resolution)
   PROBE_SKIP_RULES=1       resolve libraries but do not run plugin rules
   PROBE_MEMORY_MIB=<n>     size of the memory cache (default 256)
   PROBE_PACKAGES=1         dump the known-file closure grouped by package at idle
 
-Usage: python3 patch_framework.py --dest DEST [--source PUB_CACHE_PACKAGE_DIR]
+With --tolerant, probes whose anchor text is missing (because the source is a patched SDK
+branch) are skipped instead of failing.
+
+Usage: python3 patch_framework.py --dest DEST [--source PUB_CACHE_PACKAGE_DIR] [--tolerant]
 """
 import argparse
 import shutil
@@ -18,37 +22,8 @@ from pathlib import Path
 
 DEFAULT_SOURCE = Path.home() / '.pub-cache/hosted/pub.dev/analysis_server_plugin-0.3.25'
 
+PROBE_MEMBERS = """  AnalysisContextCollectionImpl? _contextCollection;
 
-def patch(source: Path, dest: Path, tolerant: bool = False):
-    if dest.exists():
-        shutil.rmtree(dest)
-    shutil.copytree(source, dest, symlinks=False)
-    f = dest / 'lib/src/plugin_server.dart'
-    s = f.read_text()
-
-    def replace_once(old, new):
-        nonlocal s
-        if s.count(old) != 1:
-            if tolerant:
-                print(f'skipped (anchor not found once): {old.strip().splitlines()[0][:70]!r}')
-                return
-            raise AssertionError(f'expected exactly one match for: {old[:80]!r}')
-        s = s.replace(old, new)
-
-    replace_once(
-        "import 'dart:async';\n",
-        "import 'dart:async';\nimport 'dart:io';\n"
-        "import 'package:analyzer/src/dart/analysis/file_byte_store.dart';\n",
-    )
-
-    replace_once(
-        """  late final ByteStore _byteStore = MemoryCachingByteStore(
-    NullByteStore(),
-    1024 * 1024 * 256,
-  );
-""",
-        """  static final String? probeByteStorePath =
-      Platform.environment['PROBE_BYTE_STORE'];
   static final bool probeFineDeps =
       Platform.environment['PROBE_FINE_DEPS'] != '0';
   static final bool probePriorityAll =
@@ -67,15 +42,6 @@ def patch(source: Path, dest: Path, tolerant: bool = False):
   static void probeCount(String key) {
     probeCounters[key] = (probeCounters[key] ?? 0) + 1;
   }
-
-  late final FileByteStore? _probeFileByteStore = probeByteStorePath == null
-      ? null
-      : FileByteStore(probeByteStorePath!, tempNameSuffix: 'probe');
-
-  late final ByteStore _byteStore = MemoryCachingByteStore(
-    _probeFileByteStore ?? NullByteStore(),
-    1024 * 1024 * probeMemoryMiB,
-  );
 
   void probeDumpStats(String reason) {
     var cc = _contextCollection;
@@ -101,18 +67,15 @@ def patch(source: Path, dest: Path, tolerant: bool = False):
         'loadedBundles=${d.libraryContext.loadedBundles.length}',
       );
     }
-    var bs = _byteStore as MemoryCachingByteStore;
-    sb.writeln(
-      '[probe] memStore hit=${bs.cacheHitCount} miss=${bs.cacheMissCount} '
-      'put=${bs.putCount} storeHit=${bs.storeHitCount} '
-      'storeMiss=${bs.storeMissCount} size=${bs.currentSizeBytes} '
-      'entries=${bs.entryCount} evictedEntries=${bs.evictedEntryCount} '
-      'evictedBytes=${bs.evictedBytes}',
-    );
-    if (_probeFileByteStore case var f?) {
+    var bs = _byteStore;
+    sb.writeln('[probe] byteStore=${bs.runtimeType}');
+    if (bs is MemoryCachingByteStore) {
       sb.writeln(
-        '[probe] fileStore reads=${f.readCount} misses=${f.readMissCount} '
-        'writes=${f.writeCount}',
+        '[probe] memStore hit=${bs.cacheHitCount} miss=${bs.cacheMissCount} '
+        'put=${bs.putCount} storeHit=${bs.storeHitCount} '
+        'storeMiss=${bs.storeMissCount} size=${bs.currentSizeBytes} '
+        'entries=${bs.entryCount} evictedEntries=${bs.evictedEntryCount} '
+        'evictedBytes=${bs.evictedBytes}',
       );
     }
     if (Platform.environment['PROBE_PACKAGES'] == '1') {
@@ -140,6 +103,52 @@ def patch(source: Path, dest: Path, tolerant: bool = False):
     cc.scheduler.accumulatedPerformance.write(buffer: sb, indent: '    ');
     stderr.write(sb);
   }
+"""
+
+
+def patch(source: Path, dest: Path, tolerant: bool = False):
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(source, dest, symlinks=False)
+    f = dest / 'lib/src/plugin_server.dart'
+    s = f.read_text()
+
+    def replace_once(old, new):
+        nonlocal s
+        if s.count(old) != 1:
+            if tolerant:
+                print(f'skipped (anchor not found once): {old.strip().splitlines()[0][:70]!r}')
+                return
+            raise AssertionError(f'expected exactly one match for: {old[:80]!r}')
+        s = s.replace(old, new)
+
+    replace_once(
+        "import 'dart:async';\n",
+        "import 'dart:async';\nimport 'dart:io';\n"
+        "import 'package:analyzer/src/dart/analysis/file_byte_store.dart';\n",
+    )
+
+    # Probe members, anchored on a field every version has.
+    replace_once("  AnalysisContextCollectionImpl? _contextCollection;\n", PROBE_MEMBERS)
+
+    # Optional file-backed store (only where the source still uses NullByteStore).
+    replace_once(
+        """  late final ByteStore _byteStore = MemoryCachingByteStore(
+    NullByteStore(),
+    1024 * 1024 * 256,
+  );
+""",
+        """  static final String? probeByteStorePath =
+      Platform.environment['PROBE_BYTE_STORE'];
+
+  late final FileByteStore? _probeFileByteStore = probeByteStorePath == null
+      ? null
+      : FileByteStore(probeByteStorePath!, tempNameSuffix: 'probe');
+
+  late final ByteStore _byteStore = MemoryCachingByteStore(
+    _probeFileByteStore ?? NullByteStore(),
+    1024 * 1024 * probeMemoryMiB,
+  );
 """,
     )
 
@@ -332,13 +341,7 @@ def patch(source: Path, dest: Path, tolerant: bool = False):
         """        await Future.wait(
           _plugins.map((p) => p.shutDown()).whereType<Future<Object?>>(),
         );
-        var probeFlush = Stopwatch()..start();
         await _probeFileByteStore?.flush();
-        stderr.writeln(
-          '[probe] shutdown flush ms=${probeFlush.elapsedMilliseconds} '
-          'at ${probeProcessStopwatch.elapsedMilliseconds} ms',
-        );
-        probeDumpStats('shutdown');
         _channel.sendResponse(
 """,
     )

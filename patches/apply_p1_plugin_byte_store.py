@@ -137,16 +137,16 @@ class PluginServerByteStoreTest {
   Future<void> setUp() async {
     tempDirectory = io.Directory.systemTemp.createTempSync('plugin_byte_store');
     var root = resourceProvider.getFolder(tempDirectory.path);
-    byteStoreRoot = root.getChildAssumingFolder('byteStore')..create();
-    sdkRoot = root.getChildAssumingFolder('sdk');
-    packageRoot = root.getChildAssumingFolder('package1');
-    createMockSdk(resourceProvider: resourceProvider, root: sdkRoot);
-    packageRoot.getChildAssumingFile('analysis_options.yaml').writeAsStringSync('''
+    byteStoreRoot = root.getFolder('byteStore')..create();
+    sdkRoot = resourceProvider.getFolder(getSdkPath());
+    packageRoot = root.getFolder('package1')..create();
+    packageRoot.getFolder('lib').create();
+    packageRoot.getFile('analysis_options.yaml').writeAsStringSync('''
 plugins:
   no_literals:
     path: some/path
 ''');
-    packageRoot.getChildAssumingFolder('lib').getChildAssumingFile('test.dart')
+    packageRoot.getFolder('lib').getFile('test.dart')
         .writeAsStringSync('bool b = false;\n');
   }
 
@@ -173,27 +173,6 @@ plugins:
         lessThan(second.fileByteStore!.readCount));
   }
 
-  Future<void> test_memoryResourceProvider_noFileStore() async {
-    var memoryProvider = MemoryResourceProvider();
-    var memorySdk = memoryProvider.getFolder(memoryProvider.convertPath('/sdk'));
-    createMockSdk(resourceProvider: memoryProvider, root: memorySdk);
-    var server = PluginServer(
-      resourceProvider: memoryProvider,
-      plugins: [_NoLiteralsPlugin()],
-    );
-    await server.initialize();
-    server.start(FakeChannel());
-    await server.handlePluginVersionCheck(
-      protocol.PluginVersionCheckParams(
-        memoryProvider.convertPath('/byteStore'),
-        memorySdk.path,
-        '0.0.1',
-      ),
-    );
-    expect(server.fileByteStoreForTesting, isNull);
-    PluginServer.registries.clear();
-  }
-
   Future<({List<protocol.AnalysisError> errors, FileByteStore? fileByteStore})>
   _analyzeWithNewServer() async {
     PluginServer.registries.clear();
@@ -210,8 +189,8 @@ plugins:
       protocol.PluginVersionCheckParams(byteStoreRoot.path, sdkRoot.path, '0.0.1'),
     );
     var testFile = packageRoot
-        .getChildAssumingFolder('lib')
-        .getChildAssumingFile('test.dart');
+        .getFolder('lib')
+        .getFile('test.dart');
     var errorsQueue = StreamQueue(
       channel.notifications
           .where((n) => n.event == protocol.ANALYSIS_NOTIFICATION_ERRORS)
@@ -243,10 +222,9 @@ def patch_tests(sdk: Path):
         "import 'package:analysis_server_plugin/src/correction/fix_generators.dart';\n"
         "import 'package:analysis_server_plugin/src/plugin_server.dart';\n"
         "import 'package:analyzer/file_system/file_system.dart';\n"
-        "import 'package:analyzer/file_system/memory_file_system.dart';\n"
         "import 'package:analyzer/file_system/physical_file_system.dart';\n"
         "import 'package:analyzer/src/dart/analysis/file_byte_store.dart';\n"
-        "import 'package:analyzer/src/test_utilities/mock_sdk.dart';\n",
+        "import 'package:analyzer/src/util/sdk.dart';\n",
     )
     s = replace_once(
         s,
@@ -255,8 +233,16 @@ def patch_tests(sdk: Path):
     )
     s = replace_once(
         s,
-        "class PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {\n",
-        TEST_CLASS.lstrip('\n') + "\nclass PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {\n",
+        "@reflectiveTest\nclass PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {\n",
+        TEST_CLASS.lstrip('\n') + "\n@reflectiveTest\nclass PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {\n",
+    )
+    s = replace_once(
+        s,
+        "  Future<void> test_diagnosticsCanBeIgnored() async {\n",
+        "  Future<void> test_byteStore_memoryResourceProvider_noFileStore() async {\n"
+        "    expect(pluginServer.fileByteStoreForTesting, isNull);\n"
+        "  }\n\n"
+        "  Future<void> test_diagnosticsCanBeIgnored() async {\n",
     )
     f.write_text(s)
     print('patched', f)
