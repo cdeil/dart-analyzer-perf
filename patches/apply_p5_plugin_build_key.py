@@ -50,7 +50,66 @@ def patch_watcher(sdk: Path):
     print('patched', f)
 
 
+def patch_manager_doc(sdk: Path):
+    f = sdk / 'pkg/analysis_server/lib/src/plugin/plugin_manager.dart'
+    s = f.read_text()
+    s = replace_once(
+        s,
+        """  /// Returns the "plugin state" folder for a plugin at [pluginPath].
+  ///
+  /// This is a directory under the state location for '.plugin_manager', named
+  /// with a hash based on [pluginPath] and the version of the Dart SDK.
+  Folder pluginStateFolder(String pluginPath) {
+""",
+        """  /// Returns the "plugin state" folder for the plugin package identified by
+  /// [key]: the path of a legacy plugin, or the generated pubspec of a shared
+  /// plugin package, so that every context root enabling the same plugins
+  /// from the same sources shares one resolved and compiled package.
+  ///
+  /// This is a directory under the state location for '.plugin_manager', named
+  /// with a hash based on [key] and the version of the Dart SDK.
+  Folder pluginStateFolder(String key) {
+""",
+    )
+    s = replace_once(
+        s,
+        "    var stateName = _uniqueDirectoryName(pluginPath);\n    return stateFolder.getFolder(stateName);\n",
+        "    var stateName = _uniqueDirectoryName(key);\n    return stateFolder.getFolder(stateName);\n",
+    )
+    f.write_text(s)
+    print('patched', f)
+
+
+def patch_mock(sdk: Path):
+    f = sdk / 'pkg/analysis_server/lib/src/utilities/mocks.dart'
+    s = f.read_text()
+    s = replace_once(
+        s,
+        """  @override
+  Folder pluginStateFolder(String contextRootPath) {
+    return resourceProvider.getFolder(
+      resourceProvider.pathContext.join(contextRootPath, '.plugin_state'),
+    );
+  }
+""",
+        """  @override
+  Folder pluginStateFolder(String key) {
+    var pathContext = resourceProvider.pathContext;
+    return resourceProvider.getFolder(
+      pathContext.join(
+        '${pathContext.separator}plugin_state',
+        (key.hashCode & 0x7fffffff).toRadixString(16),
+      ),
+    );
+  }
+""",
+    )
+    f.write_text(s)
+    print('patched', f)
+
+
 if __name__ == '__main__':
     sdk = Path(sys.argv[1])
     patch_watcher(sdk)
-    print('Check pkg/analysis_server/test/src/plugin/plugin_watcher_test.dart for folder-name expectations.')
+    patch_manager_doc(sdk)
+    patch_mock(sdk)

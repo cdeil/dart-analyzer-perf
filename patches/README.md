@@ -17,7 +17,7 @@ plugin reports that analysis is complete.
 | --- | --- | --- | --- |
 | 1 | `plugin-byte-store` | tests pass (49), analyzer clean | main: 4.4, 4.7 cold. Branch: 5.1 cold (first run writes 88 MB), **1.55, 1.57 warm**, identical findings |
 | 2 | `driver-recent-libraries` | tests pass (full driver suite 1,294, plugin 47), analyzer clean | `ResolvedUnitResult` events 1,330 → 665, `analyzeFile` 1,330 → 665; cold 4.1 to 4.5 (main 4.4 to 4.7); warm with the probe's file store 1.32 to 1.36 (main 1.54 to 1.57) |
-| 3 | `plugin-fine-dependencies` | pending | |
+| 3 | `plugin-fine-dependencies` | tests pass (plugin 49, plugin_isolate 23, plugin_manager 36, analyzer_plugin 1,183), analysis clean | plugin defaults to the host's setting (off): cold 3.4, 3.8 (main 4.4 to 4.7); warm with the probe's file store 1.28 to 1.30 (main 1.54 to 1.57); `computeManifests` gone, `link` 1.67 → 1.35 s |
 | 4 | `byte-store-scan` | tests pass (8), analyzer clean | not a plugin-side change; saves the start-up directory scan of the server's cache (about 2 s on a 4.7 GB cache in the real-checkout runs) |
 | 5 | `plugin-build-key` | pending | |
 
@@ -65,3 +65,14 @@ initial notifications first.
 constructor skips the start-up scan while the stamp is younger than an hour. Writes still
 trigger a clean up after `maxSizeBytes / 8`. Tests cover skip, expiry and that the stamp is
 not counted as a cache file.
+
+## 3. `plugin-fine-dependencies`
+
+`pkg/analyzer_plugin/tool/spec/plugin_spec.html`: optional `withFineDependencies` field on
+`plugin.versionCheck`; `protocol_generated.dart`, `protocol_constants.dart`, `doc/api.html`
+and the integration matchers are regenerated with `tool/spec/generate_all.dart`.
+`PluginManager` gets a `withFineDependencies` constructor parameter that `AnalysisServer`
+fills from its options and `PluginIsolate`/`PluginSession.start` forward in the version
+check. `PluginServer` stores the value and uses it in `_createContextCollection` (default
+false, the server's default). Tests: the plugin's driver has fine dependencies off by
+default and on when the version check asks for it.
