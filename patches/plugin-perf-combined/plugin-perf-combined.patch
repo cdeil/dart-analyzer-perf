@@ -1,0 +1,790 @@
+diff --git a/pkg/analysis_server/lib/src/analysis_server.dart b/pkg/analysis_server/lib/src/analysis_server.dart
+index 3f05dd69bb8..912cb60098a 100644
+--- a/pkg/analysis_server/lib/src/analysis_server.dart
++++ b/pkg/analysis_server/lib/src/analysis_server.dart
+@@ -360,6 +360,7 @@ abstract class AnalysisServer {
+       instrumentationService,
+       sessionLogger,
+       processRunner: processRunner ?? ProcessRunner(environment: environment),
++      withFineDependencies: options.withFineDependencies,
+     );
+     var pluginWatcher = PluginWatcher(
+       resourceProvider,
+diff --git a/pkg/analysis_server/lib/src/plugin/plugin_isolate.dart b/pkg/analysis_server/lib/src/plugin/plugin_isolate.dart
+index 97347a58022..9d419546ce4 100644
+--- a/pkg/analysis_server/lib/src/plugin/plugin_isolate.dart
++++ b/pkg/analysis_server/lib/src/plugin/plugin_isolate.dart
+@@ -223,12 +223,20 @@ class PluginIsolate {
+   ///
+   /// Returns the [PluginSession] used to interact with the plugin, or `null` if
+   /// the plugin could not be run.
+-  Future<PluginSession?> start(String? byteStorePath, String sdkPath) async {
++  Future<PluginSession?> start(
++    String? byteStorePath,
++    String sdkPath, {
++    bool withFineDependencies = false,
++  }) async {
+     if (currentSession != null) {
+       throw StateError('Cannot start a plugin that is already running.');
+     }
+     currentSession = PluginSession(this);
+-    var isRunning = await currentSession!.start(byteStorePath, sdkPath);
++    var isRunning = await currentSession!.start(
++      byteStorePath,
++      sdkPath,
++      withFineDependencies: withFineDependencies,
++    );
+     if (!isRunning) {
+       currentSession = null;
+     }
+@@ -514,7 +522,11 @@ class PluginSession {
+   ///
+   /// The plugin will be sent the given [byteStorePath]. Returns whether the
+   /// plugin is compatible and running.
+-  Future<bool> start(String? byteStorePath, String sdkPath) async {
++  Future<bool> start(
++    String? byteStorePath,
++    String sdkPath, {
++    bool withFineDependencies = false,
++  }) async {
+     if (channel != null) {
+       throw StateError('Cannot start a plugin that is already running.');
+     }
+@@ -560,7 +572,12 @@ class PluginSession {
+       return false;
+     }
+     var response = await sendRequest(
+-      PluginVersionCheckParams(byteStorePath, sdkPath, '1.0.0-alpha.0'),
++      PluginVersionCheckParams(
++        byteStorePath,
++        sdkPath,
++        '1.0.0-alpha.0',
++        withFineDependencies: withFineDependencies,
++      ),
+     );
+     var result = PluginVersionCheckResult.fromResponse(response);
+     isCompatible = result.isCompatible;
+diff --git a/pkg/analysis_server/lib/src/plugin/plugin_manager.dart b/pkg/analysis_server/lib/src/plugin/plugin_manager.dart
+index e36a3d28cf4..fe0f79b1df1 100644
+--- a/pkg/analysis_server/lib/src/plugin/plugin_manager.dart
++++ b/pkg/analysis_server/lib/src/plugin/plugin_manager.dart
+@@ -151,6 +151,10 @@ class PluginManager {
+   /// The version of the Dart SDK that this plugin manager is running in.
+   final String _dartVersion;
+ 
++  /// Whether the server tracks fine-grained dependencies between libraries;
++  /// forwarded to plugins so that they analyze the same way.
++  final bool withFineDependencies;
++
+   /// The set of context root paths with no configured _new_ plugins.
+   final contextRootsWithNoPlugins = <String>{};
+ 
+@@ -166,6 +170,7 @@ class PluginManager {
+     this.instrumentationService,
+     this.sessionLogger, {
+     this._processRunner = const ProcessRunner(),
++    this.withFineDependencies = false,
+     @visibleForTesting String? dartVersion,
+   }) : _dartVersion = dartVersion ?? platform.version;
+ 
+@@ -231,7 +236,11 @@ class PluginManager {
+     try {
+       instrumentationService.logInfo('Starting plugin "$pluginIsolate"');
+       sessionLogger.logInfo('Starting plugin "$pluginIsolate"');
+-      var session = await pluginIsolate.start(_byteStorePath, _sdkPath);
++      var session = await pluginIsolate.start(
++        _byteStorePath,
++        _sdkPath,
++        withFineDependencies: withFineDependencies,
++      );
+       unawaited(
+         session?.onDone.then((_) {
+           if (_pluginMap[path] == pluginIsolate) {
+diff --git a/pkg/analysis_server_plugin/lib/src/plugin_server.dart b/pkg/analysis_server_plugin/lib/src/plugin_server.dart
+index 56b4d62b1aa..2f785ff2728 100644
+--- a/pkg/analysis_server_plugin/lib/src/plugin_server.dart
++++ b/pkg/analysis_server_plugin/lib/src/plugin_server.dart
+@@ -6,6 +6,7 @@
+ library;
+ 
+ import 'dart:async';
++import 'dart:isolate' show Isolate;
+ 
+ import 'package:analysis_server_plugin/edit/assist/assist.dart';
+ import 'package:analysis_server_plugin/edit/assist/dart_assist_context.dart';
+@@ -28,12 +29,14 @@ import 'package:analyzer/error/error.dart';
+ import 'package:analyzer/error/listener.dart';
+ import 'package:analyzer/file_system/file_system.dart';
+ import 'package:analyzer/file_system/overlay_file_system.dart';
++import 'package:analyzer/file_system/physical_file_system.dart';
+ import 'package:analyzer/instrumentation/instrumentation.dart';
+ import 'package:analyzer/src/analysis_options/analysis_options.dart';
+ import 'package:analyzer/src/analysis_rule/rule_context.dart';
+ import 'package:analyzer/src/dart/analysis/analysis_context_collection.dart';
+ import 'package:analyzer/src/dart/analysis/byte_store.dart';
+ import 'package:analyzer/src/dart/analysis/driver_based_analysis_context.dart';
++import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
+ import 'package:analyzer/src/dart/analysis/file_content_cache.dart';
+ import 'package:analyzer/src/dart/analysis/file_state.dart';
+ import 'package:analyzer/src/dart/analysis/status.dart';
+@@ -76,15 +79,33 @@ class PluginServer {
+ 
+   final OverlayResourceProvider _resourceProvider;
+ 
+-  late final ByteStore _byteStore = MemoryCachingByteStore(
++  /// The size of the in-memory layer of [_byteStore].
++  static const int _memoryByteStoreSize = 1024 * 1024 * 256;
++
++  /// The byte store used by every analysis context of this plugin.
++  ///
++  /// Until the server sends a `plugin.versionCheck` request with a byte store
++  /// path, or when the plugin does not run on the physical file system, results
++  /// are cached in memory only.
++  ByteStore _byteStore = MemoryCachingByteStore(
+     NullByteStore(),
+-    1024 * 1024 * 256,
++    _memoryByteStoreSize,
+   );
+ 
++  /// The file-backed store behind [_byteStore], if any.
++  ///
++  /// The server owns the directory and its eviction; the plugin only reads and
++  /// writes entries, and flushes pending writes before it shuts down.
++  FileByteStore? _fileByteStore;
++
+   AnalysisContextCollectionImpl? _contextCollection;
+ 
+   String? _sdkPath;
+ 
++  /// Whether analysis contexts track fine-grained dependencies, as requested
++  /// by the server in `plugin.versionCheck`.
++  bool _withFineDependencies = false;
++
+   /// Paths of priority files.
+   Set<String> _priorityPaths = {};
+ 
+@@ -326,11 +347,38 @@ class PluginServer {
+     // TODO(srawlins): It seems improper for _this_ method to be the point where
+     // the SDK path is configured...
+     _sdkPath = parameters.sdkPath;
++    _useFileByteStore(parameters.byteStorePath);
++    _withFineDependencies = parameters.withFineDependencies ?? false;
+     return protocol.PluginVersionCheckResult(true, 'Plugin Server', '0.0.1', [
+       '*.dart',
+     ]);
+   }
+ 
++  /// The file-backed byte store, for tests.
++  @visibleForTesting
++  FileByteStore? get fileByteStoreForTesting => _fileByteStore;
++
++  /// Backs [_byteStore] with a [FileByteStore] in [byteStorePath], if the
++  /// path is not empty and the plugin runs on the physical file system.
++  ///
++  /// Several plugin isolates and the server itself can write to the same
++  /// directory; the temporary file name suffix keeps their writes apart.
++  void _useFileByteStore(String byteStorePath) {
++    if (byteStorePath.isEmpty) return;
++    if (_resourceProvider.baseProvider is! PhysicalResourceProvider) return;
++    if (_contextCollection != null) return;
++    var fileByteStore = _fileByteStore = FileByteStore(
++      byteStorePath,
++      tempNameSuffix: 'plugin-${Isolate.current.hashCode}',
++    );
++    _byteStore = MemoryCachingByteStore(fileByteStore, _memoryByteStoreSize);
++  }
++
++  /// The analysis context collection, for tests.
++  @visibleForTesting
++  AnalysisContextCollectionImpl? get contextCollectionForTesting =>
++      _contextCollection;
++
+   /// Initializes each of the registered plugins.
+   Future<void> initialize() async {
+     await Future.wait(
+@@ -671,7 +719,7 @@ class PluginServer {
+           ({required analysisOptionsBuilder}) => analysisOptionsBuilder
+             ..warning = false
+             ..lint = false,
+-      withFineDependencies: true,
++      withFineDependencies: _withFineDependencies,
+       drainStreams: false,
+     );
+     _contextCollection = contextCollection;
+@@ -802,6 +850,7 @@ class PluginServer {
+         await Future.wait(
+           _plugins.map((p) => p.shutDown()).whereType<Future<Object?>>(),
+         );
++        await _fileByteStore?.flush();
+         _channel.sendResponse(
+           protocol.PluginShutdownResult().toResponse(request.id, requestTime),
+         );
+diff --git a/pkg/analysis_server_plugin/test/src/plugin_server_test.dart b/pkg/analysis_server_plugin/test/src/plugin_server_test.dart
+index 6b969fb11b1..25fbb3b2c81 100644
+--- a/pkg/analysis_server_plugin/test/src/plugin_server_test.dart
++++ b/pkg/analysis_server_plugin/test/src/plugin_server_test.dart
+@@ -3,12 +3,18 @@
+ // BSD-style license that can be found in the LICENSE file.
+ 
+ import 'dart:async';
++import 'dart:io' as io;
+ 
+ import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
+ import 'package:analysis_server_plugin/plugin.dart';
+ import 'package:analysis_server_plugin/registry.dart';
+ import 'package:analysis_server_plugin/src/correction/ignore_diagnostic.dart';
++import 'package:analysis_server_plugin/src/correction/fix_generators.dart';
+ import 'package:analysis_server_plugin/src/plugin_server.dart';
++import 'package:analyzer/file_system/file_system.dart';
++import 'package:analyzer/file_system/physical_file_system.dart';
++import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
++import 'package:analyzer/src/util/sdk.dart';
+ import 'package:analyzer/dart/ast/ast.dart';
+ import 'package:analyzer/src/test_utilities/platform.dart';
+ import 'package:analyzer/src/test_utilities/test_code_format.dart';
+@@ -30,6 +36,7 @@ import 'plugin_server_test_base.dart';
+ 
+ void main() {
+   defineReflectiveTests(PluginServerTest);
++  defineReflectiveTests(PluginServerByteStoreTest);
+   defineReflectiveTests(PluginServerMapTest);
+ }
+ 
+@@ -144,7 +151,12 @@ bool b = false;'''),
+     newFile(filePath, 'bool b = false;');
+     newFile(testFilePath, 'bool b = false;');
+ 
++    var paramsQueue = _analysisErrorsParams;
+     await _setRoots();
++    // Consume the diagnostics of the initial analysis, so that only those
++    // produced with the new configurations are read below.
++    await paramsQueue.next;
++    await paramsQueue.next;
+ 
+     await channel.sendRequest(
+       protocol.AnalysisSetConfigurationsParams({
+@@ -155,7 +167,6 @@ bool b = false;'''),
+       }),
+     );
+ 
+-    var paramsQueue = _analysisErrorsParams;
+     var params1 = await paramsQueue.next;
+     var params2 = await paramsQueue.next;
+ 
+@@ -175,7 +186,12 @@ bool b = false;'''),
+     newFile(filePath, 'bool b = false;');
+     newFile(testFilePath, 'bool b = false;');
+ 
++    var paramsQueue = _analysisErrorsParams;
+     await _setRoots();
++    // Consume the diagnostics of the initial analysis, so that only those
++    // produced with the new configurations are read below.
++    await paramsQueue.next;
++    await paramsQueue.next;
+ 
+     await channel.sendRequest(
+       protocol.AnalysisSetConfigurationsParams({
+@@ -192,7 +208,6 @@ bool b = false;'''),
+       }),
+     );
+ 
+-    var paramsQueue = _analysisErrorsParams;
+     var params1 = await paramsQueue.next;
+     var params2 = await paramsQueue.next;
+ 
+@@ -255,6 +270,105 @@ bool b = false;
+   }
+ }
+ 
++/// Tests that run the plugin server on the physical file system, so that the
++/// byte store can persist analysis results between plugin instances.
++@reflectiveTest
++class PluginServerByteStoreTest {
++  late io.Directory tempDirectory;
++  late Folder byteStoreRoot;
++  late Folder sdkRoot;
++  late Folder packageRoot;
++
++  PhysicalResourceProvider get resourceProvider =>
++      PhysicalResourceProvider.INSTANCE;
++
++  Future<void> setUp() async {
++    tempDirectory = io.Directory.systemTemp.createTempSync('plugin_byte_store');
++    var root = resourceProvider.getFolder(tempDirectory.path);
++    byteStoreRoot = root.getFolder('byteStore')..create();
++    sdkRoot = resourceProvider.getFolder(getSdkPath());
++    packageRoot = root.getFolder('package1')..create();
++    packageRoot.getFolder('lib').create();
++    packageRoot.getFile('analysis_options.yaml').writeAsStringSync('''
++plugins:
++  no_literals:
++    path: some/path
++''');
++    packageRoot
++        .getFolder('lib')
++        .getFile('test.dart')
++        .writeAsStringSync('bool b = false;\n');
++  }
++
++  void tearDown() {
++    PluginServer.registries.clear();
++    registeredFixGenerators.clearLintProducers();
++    registeredFixGenerators.clearWarningProducers();
++    tempDirectory.deleteSync(recursive: true);
++  }
++
++  Future<void> test_persistsAcrossInstances() async {
++    var first = await _analyzeWithNewServer();
++    expect(first.errors, hasLength(1));
++    expect(first.fileByteStore, isNotNull);
++    expect(first.fileByteStore!.writeCount, greaterThan(0));
++    expect(first.fileByteStore!.pendingWriteCount, 0);
++    expect(byteStoreRoot.getChildren(), isNotEmpty);
++
++    var second = await _analyzeWithNewServer();
++    expect(second.errors, hasLength(1));
++    expect(second.errors.single.message, first.errors.single.message);
++    expect(second.fileByteStore!.readCount, greaterThan(0));
++    expect(
++      second.fileByteStore!.readMissCount,
++      lessThan(second.fileByteStore!.readCount),
++    );
++  }
++
++  Future<({List<protocol.AnalysisError> errors, FileByteStore? fileByteStore})>
++  _analyzeWithNewServer() async {
++    PluginServer.registries.clear();
++    registeredFixGenerators.clearLintProducers();
++    registeredFixGenerators.clearWarningProducers();
++    var channel = FakeChannel();
++    var server = PluginServer(
++      resourceProvider: resourceProvider,
++      plugins: [_NoLiteralsPlugin()],
++    );
++    await server.initialize();
++    server.start(channel);
++    await server.handlePluginVersionCheck(
++      protocol.PluginVersionCheckParams(
++        byteStoreRoot.path,
++        sdkRoot.path,
++        '0.0.1',
++      ),
++    );
++    var testFile = packageRoot.getFolder('lib').getFile('test.dart');
++    var errorsQueue = StreamQueue(
++      channel.notifications
++          .where((n) => n.event == protocol.ANALYSIS_NOTIFICATION_ERRORS)
++          .map((n) => protocol.AnalysisErrorsParams.fromNotification(n))
++          .where((p) => p.file == testFile.path),
++    );
++    var contextRoot = protocol.ContextRoot(packageRoot.path, []);
++    await Future.wait([
++      channel.sendRequest(
++        protocol.AnalysisSetContextRootsParams([contextRoot]),
++      ),
++      channel.sendRequest(
++        protocol.AnalysisSetAnalysisRootsParams([contextRoot.root], []),
++      ),
++    ]);
++    var params = await errorsQueue.next;
++    await channel.sendRequest(protocol.PluginShutdownParams());
++    return (
++      errors: params.errors,
++      fileByteStore: server.fileByteStoreForTesting,
++    );
++  }
++}
++
+ @reflectiveTest
+ class PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {
+   late _NoLiteralsPlugin _plugin;
+@@ -271,6 +385,36 @@ class PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {
+     await startPlugin();
+   }
+ 
++  Future<void> test_byteStore_memoryResourceProvider_noFileStore() async {
++    expect(pluginServer.fileByteStoreForTesting, isNull);
++  }
++
++  Future<void> test_versionCheck_fineDependencies_default() async {
++    writeAnalysisOptionsWithPlugin();
++    newFile(filePath, 'bool b = false;');
++    await _setContextRootsAndReadFirstErrors();
++    var driver =
++        pluginServer.contextCollectionForTesting!.contexts.single.driver;
++    expect(driver.withFineDependencies, isFalse);
++  }
++
++  Future<void> test_versionCheck_fineDependencies_enabled() async {
++    await pluginServer.handlePluginVersionCheck(
++      protocol.PluginVersionCheckParams(
++        byteStoreRoot.path,
++        sdkRoot.path,
++        '0.0.1',
++        withFineDependencies: true,
++      ),
++    );
++    writeAnalysisOptionsWithPlugin();
++    newFile(filePath, 'bool b = false;');
++    await _setContextRootsAndReadFirstErrors();
++    var driver =
++        pluginServer.contextCollectionForTesting!.contexts.single.driver;
++    expect(driver.withFineDependencies, isTrue);
++  }
++
+   Future<void> test_diagnosticsCanBeIgnored() async {
+     writeAnalysisOptionsWithPlugin();
+     newFile(filePath, '''
+diff --git a/pkg/analyzer/lib/src/dart/analysis/driver.dart b/pkg/analyzer/lib/src/dart/analysis/driver.dart
+index 56d6aa7ffc9..615497a837c 100644
+--- a/pkg/analyzer/lib/src/dart/analysis/driver.dart
++++ b/pkg/analyzer/lib/src/dart/analysis/driver.dart
+@@ -264,6 +264,16 @@ class AnalysisDriver {
+   /// Cached results of [getResolvedLibrary].
+   final Map<String, ResolvedLibraryResultImpl> _resolvedLibraryCache = {};
+ 
++  /// The most recently produced results of libraries without priority files,
++  /// in production order, so that a [getResolvedLibrary] request that follows
++  /// the [ResolvedUnitResult] events of a library does not resolve it again.
++  ///
++  /// Bounded to [_recentResolvedLibrariesCapacity] entries; invalidated
++  /// together with [_resolvedLibraryCache].
++  final Map<String, ResolvedLibraryResultImpl> _recentResolvedLibraries = {};
++
++  static const int _recentResolvedLibrariesCapacity = 8;
++
+   /// The controller for the [exceptions] stream.
+   final StreamController<ExceptionResult> _exceptionController =
+       StreamController<ExceptionResult>();
+@@ -582,6 +592,7 @@ class AnalysisDriver {
+     if (file_paths.isDart(resourceProvider.pathContext, path)) {
+       _priorityResults.clear();
+       _resolvedLibraryCache.clear();
++      _recentResolvedLibraries.clear();
+       _pendingFileChanges.add(FileChange(path, FileChangeKind.add));
+       _scheduler.notify();
+     }
+@@ -684,6 +695,7 @@ class AnalysisDriver {
+       _lastProducedDiagnosticIds.remove(file);
+       _priorityResults.clear();
+       _resolvedLibraryCache.clear();
++      _recentResolvedLibraries.clear();
+       _pendingFileChanges.add(FileChange(path, FileChangeKind.change));
+       _scheduler._fileUpdatesStatistics.changedFiles.add(path);
+       _scheduler.notify();
+@@ -1040,7 +1052,8 @@ class AnalysisDriver {
+       return Future.value(DisposedAnalysisContextResult());
+     }
+ 
+-    if (_resolvedLibraryCache[path] case var cached?) {
++    if (_resolvedLibraryCache[path] ?? _recentResolvedLibraries[path]
++        case var cached?) {
+       return cached;
+     }
+ 
+@@ -1304,6 +1317,7 @@ class AnalysisDriver {
+       _lastProducedDiagnosticIds.remove(file);
+       _priorityResults.clear();
+       _resolvedLibraryCache.clear();
++      _recentResolvedLibraries.clear();
+       _pendingFileChanges.add(FileChange(path, FileChangeKind.remove));
+       _scheduler._fileUpdatesStatistics.removedFiles.add(path);
+       _scheduler.notify();
+@@ -1529,6 +1543,15 @@ class AnalysisDriver {
+ 
+         if (isLibraryWithPriorityFile) {
+           _resolvedLibraryCache[library.file.path] = libraryResult;
++        } else {
++          _recentResolvedLibraries.remove(library.file.path);
++          _recentResolvedLibraries[library.file.path] = libraryResult;
++          if (_recentResolvedLibraries.length >
++              _recentResolvedLibrariesCapacity) {
++            _recentResolvedLibraries.remove(
++              _recentResolvedLibraries.keys.first,
++            );
++          }
+         }
+ 
+         // getResolvedLibrary()
+@@ -1614,6 +1637,7 @@ class AnalysisDriver {
+     clearLibraryContext();
+     _priorityResults.clear();
+     _resolvedLibraryCache.clear();
++    _recentResolvedLibraries.clear();
+   }
+ 
+   /// Completes pending requests if a required SDK library is missing.
+@@ -2056,7 +2080,8 @@ class AnalysisDriver {
+         throw UnimplementedError('(${kind.runtimeType}) $kind');
+     }
+ 
+-    if (_resolvedLibraryCache[path] case var cached?) {
++    if (_resolvedLibraryCache[path] ?? _recentResolvedLibraries[path]
++        case var cached?) {
+       _requestedLibraries.completeAll(path, cached);
+       return;
+     }
+diff --git a/pkg/analyzer/test/src/dart/analysis/driver_test.dart b/pkg/analyzer/test/src/dart/analysis/driver_test.dart
+index 2cfae0404a4..52266de1b20 100644
+--- a/pkg/analyzer/test/src/dart/analysis/driver_test.dart
++++ b/pkg/analyzer/test/src/dart/analysis/driver_test.dart
+@@ -2523,6 +2523,63 @@ class A {}
+ ''');
+   }
+ 
++  test_getResolvedLibrary_afterProduceErrors_reusesRecent() async {
++    var a = newFile('$testPackageLibPath/a.dart', r'''
++class A {}
++''');
++
++    var driver = driverFor(testFile);
++    var collector = DriverEventCollector(driver);
++
++    // Not a priority file: analyzed by the `produceErrors` loop.
++    driver.addFile2(a);
++    await assertEventsText(collector, r'''
++[status] working
++[operation] analyzeFile
++  file: /home/test/lib/a.dart
++  library: /home/test/lib/a.dart
++[stream]
++  ResolvedUnitResult #0
++    path: /home/test/lib/a.dart
++    uri: package:test/a.dart
++    flags: exists isLibrary
++[status] idle
++''');
++
++    // The library was just produced, so no second analysis is needed.
++    collector.getResolvedLibrary('A1', a);
++    await assertEventsText(collector, r'''
++[future] getResolvedLibrary A1
++  ResolvedLibraryResult #1
++    element: package:test/a.dart
++    units
++      ResolvedUnitResult #0
++''');
++
++    // A change invalidates the recent result.
++    driver.changeFile2(a);
++    collector.getResolvedLibrary('A2', a);
++    await assertEventsText(collector, r'''
++[status] working
++[operation] analyzeFile
++  file: /home/test/lib/a.dart
++  library: /home/test/lib/a.dart
++[operation] reuseLinkedBundle
++  package:test/a.dart
++[stream]
++  ResolvedUnitResult #2
++    path: /home/test/lib/a.dart
++    uri: package:test/a.dart
++    flags: exists isLibrary
++[status] idle
++[future] getResolvedLibrary A2
++  ResolvedLibraryResult #3
++    element: package:test/a.dart
++    units
++      ResolvedUnitResult #2
++''');
++  }
++
+   test_getResolvedLibrary_cachePriority() async {
+     var a = newFile('$testPackageLibPath/a.dart', r'''
+ part 'b.dart';
+diff --git a/pkg/analyzer_plugin/doc/api.html b/pkg/analyzer_plugin/doc/api.html
+index 8b071f2d121..4c7b7cb186a 100644
+--- a/pkg/analyzer_plugin/doc/api.html
++++ b/pkg/analyzer_plugin/doc/api.html
+@@ -148,6 +148,7 @@ a:focus, a:hover {
+     "<b>byteStorePath</b>": <a href="#type_FilePath">FilePath</a>
+     "<b>sdkPath</b>": <a href="#type_FilePath">FilePath</a>
+     "<b>version</b>": String
++    "<b>withFineDependencies</b>": <span style="color:#999999">optional</span> bool
+   }
+ }</pre><br><pre>response: {
+   "id": String
+@@ -184,6 +185,13 @@ a:focus, a:hover {
+           The version number of the plugin spec supported by the analysis server
+           that is executing the plugin.
+         </p>
++      </dd><dt class="field"><b>withFineDependencies: bool<span style="color:#999999"> (optional)</span></b></dt><dd>
++        
++        <p>
++          Whether the analysis server tracks fine-grained dependencies between
++          libraries. Plugins should create their analysis contexts with the same
++          setting. If omitted, fine-grained dependency tracking is disabled.
++        </p>
+       </dd></dl><h4>returns:</h4><dl><dt class="field"><b>isCompatible: bool</b></dt><dd>
+         
+         <p>
+diff --git a/pkg/analyzer_plugin/lib/protocol/protocol_constants.dart b/pkg/analyzer_plugin/lib/protocol/protocol_constants.dart
+index 0af3f7c14f1..011f4eb228a 100644
+--- a/pkg/analyzer_plugin/lib/protocol/protocol_constants.dart
++++ b/pkg/analyzer_plugin/lib/protocol/protocol_constants.dart
+@@ -103,6 +103,8 @@ const String PLUGIN_REQUEST_VERSION_CHECK = 'plugin.versionCheck';
+ const String PLUGIN_REQUEST_VERSION_CHECK_BYTE_STORE_PATH = 'byteStorePath';
+ const String PLUGIN_REQUEST_VERSION_CHECK_SDK_PATH = 'sdkPath';
+ const String PLUGIN_REQUEST_VERSION_CHECK_VERSION = 'version';
++const String PLUGIN_REQUEST_VERSION_CHECK_WITH_FINE_DEPENDENCIES =
++    'withFineDependencies';
+ const String PLUGIN_RESPONSE_DETAILS_PLUGINS = 'plugins';
+ const String PLUGIN_RESPONSE_VERSION_CHECK_CONTACT_INFO = 'contactInfo';
+ const String PLUGIN_RESPONSE_VERSION_CHECK_INTERESTING_FILES =
+diff --git a/pkg/analyzer_plugin/lib/protocol/protocol_generated.dart b/pkg/analyzer_plugin/lib/protocol/protocol_generated.dart
+index 57aecb9b63f..0ffd4bf78a4 100644
+--- a/pkg/analyzer_plugin/lib/protocol/protocol_generated.dart
++++ b/pkg/analyzer_plugin/lib/protocol/protocol_generated.dart
+@@ -5084,6 +5084,7 @@ class PluginStatusParams implements HasToJson {
+ ///       "byteStorePath": FilePath
+ ///       "sdkPath": FilePath
+ ///       "version": String
++///       "withFineDependencies": optional bool
+ ///     }
+ ///
+ /// Clients may not extend, implement or mix-in this class.
+@@ -5100,7 +5101,17 @@ class PluginVersionCheckParams implements RequestParams {
+   /// that is executing the plugin.
+   String version;
+ 
+-  PluginVersionCheckParams(this.byteStorePath, this.sdkPath, this.version);
++  /// Whether the analysis server tracks fine-grained dependencies between
++  /// libraries. Plugins should create their analysis contexts with the same
++  /// setting. If omitted, fine-grained dependency tracking is disabled.
++  bool? withFineDependencies;
++
++  PluginVersionCheckParams(
++    this.byteStorePath,
++    this.sdkPath,
++    this.version, {
++    this.withFineDependencies,
++  });
+ 
+   factory PluginVersionCheckParams.fromJson(
+     JsonDecoder jsonDecoder,
+@@ -5148,7 +5159,19 @@ class PluginVersionCheckParams implements RequestParams {
+     } else {
+       throw jsonDecoder.mismatch(jsonPath, "'version'", json);
+     }
+-    return PluginVersionCheckParams(byteStorePath, sdkPath, version);
++    bool? withFineDependencies;
++    if (json case {'withFineDependencies': var encodedWithFineDependencies}) {
++      withFineDependencies = jsonDecoder.decodeBool(
++        '$jsonPath.withFineDependencies',
++        encodedWithFineDependencies,
++      );
++    }
++    return PluginVersionCheckParams(
++      byteStorePath,
++      sdkPath,
++      version,
++      withFineDependencies: withFineDependencies,
++    );
+   }
+ 
+   factory PluginVersionCheckParams.fromRequest(
+@@ -5171,6 +5194,9 @@ class PluginVersionCheckParams implements RequestParams {
+     result['sdkPath'] =
+         clientUriConverter?.toClientFilePath(sdkPath) ?? sdkPath;
+     result['version'] = version;
++    if (withFineDependencies case var withFineDependencies?) {
++      result['withFineDependencies'] = withFineDependencies;
++    }
+     return result;
+   }
+ 
+@@ -5191,13 +5217,15 @@ class PluginVersionCheckParams implements RequestParams {
+     if (other is PluginVersionCheckParams) {
+       return byteStorePath == other.byteStorePath &&
+           sdkPath == other.sdkPath &&
+-          version == other.version;
++          version == other.version &&
++          withFineDependencies == other.withFineDependencies;
+     }
+     return false;
+   }
+ 
+   @override
+-  int get hashCode => Object.hash(byteStorePath, sdkPath, version);
++  int get hashCode =>
++      Object.hash(byteStorePath, sdkPath, version, withFineDependencies);
+ }
+ 
+ /// plugin.versionCheck result
+diff --git a/pkg/analyzer_plugin/test/integration/support/integration_test_methods.dart b/pkg/analyzer_plugin/test/integration/support/integration_test_methods.dart
+index cb13bf941f5..3f44ec04d10 100644
+--- a/pkg/analyzer_plugin/test/integration/support/integration_test_methods.dart
++++ b/pkg/analyzer_plugin/test/integration/support/integration_test_methods.dart
+@@ -46,6 +46,12 @@ abstract class IntegrationTestMixin {
+   ///   The version number of the plugin spec supported by the analysis server
+   ///   that is executing the plugin.
+   ///
++  /// * `withFineDependencies: bool (optional)`
++  ///
++  ///   Whether the analysis server tracks fine-grained dependencies between
++  ///   libraries. Plugins should create their analysis contexts with the same
++  ///   setting. If omitted, fine-grained dependency tracking is disabled.
++  ///
+   /// Returns
+   ///
+   /// * `isCompatible: bool`
+@@ -79,12 +85,14 @@ abstract class IntegrationTestMixin {
+   Future<PluginVersionCheckResult> sendPluginVersionCheck(
+     String byteStorePath,
+     String sdkPath,
+-    String version,
+-  ) async {
++    String version, {
++    bool? withFineDependencies,
++  }) async {
+     var params = PluginVersionCheckParams(
+       byteStorePath,
+       sdkPath,
+       version,
++      withFineDependencies: withFineDependencies,
+     ).toJson();
+     var result = await server.send('plugin.versionCheck', params);
+     var decoder = ResponseDecoder(null);
+diff --git a/pkg/analyzer_plugin/test/integration/support/protocol_matchers.dart b/pkg/analyzer_plugin/test/integration/support/protocol_matchers.dart
+index c60aa4ff653..1a213de6667 100644
+--- a/pkg/analyzer_plugin/test/integration/support/protocol_matchers.dart
++++ b/pkg/analyzer_plugin/test/integration/support/protocol_matchers.dart
+@@ -1702,13 +1702,14 @@ final Matcher isPluginStatusParams = LazyMatcher(
+ ///       "byteStorePath": FilePath
+ ///       "sdkPath": FilePath
+ ///       "version": String
++///       "withFineDependencies": optional bool
+ ///     }
+ final Matcher isPluginVersionCheckParams = LazyMatcher(
+-  () => MatchesJsonObject('plugin.versionCheck params', {
+-    'byteStorePath': isFilePath,
+-    'sdkPath': isFilePath,
+-    'version': isString,
+-  }),
++  () => MatchesJsonObject(
++    'plugin.versionCheck params',
++    {'byteStorePath': isFilePath, 'sdkPath': isFilePath, 'version': isString},
++    optionalFields: {'withFineDependencies': isBool},
++  ),
+ );
+ 
+ /// plugin.versionCheck result
+diff --git a/pkg/analyzer_plugin/tool/spec/plugin_spec.html b/pkg/analyzer_plugin/tool/spec/plugin_spec.html
+index 7a818b95214..d2269d4cf43 100644
+--- a/pkg/analyzer_plugin/tool/spec/plugin_spec.html
++++ b/pkg/analyzer_plugin/tool/spec/plugin_spec.html
+@@ -59,6 +59,14 @@
+           that is executing the plugin.
+         </p>
+       </field>
++      <field name="withFineDependencies" optional="true">
++        <ref>bool</ref>
++        <p>
++          Whether the analysis server tracks fine-grained dependencies between
++          libraries. Plugins should create their analysis contexts with the same
++          setting. If omitted, fine-grained dependency tracking is disabled.
++        </p>
++      </field>
+     </params>
+     <result>
+       <field name="isCompatible">
