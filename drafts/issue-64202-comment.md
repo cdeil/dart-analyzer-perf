@@ -60,7 +60,9 @@ On the CL itself, from reading PS1: the suffix only affects temporary writer fil
 so host and plugin would share permanent entries in `.analysis-driver`, but with the
 stable SDK's analyzer at `DATA_VERSION` 644 and the plugin's at 747 no key is ever shared
 in practice; the shared directory mostly matters for eviction accounting, which is the
-open question from this thread. I would propose an `EvictingFileByteStore` owned by the
-plugin (own budget, the CL's `tempNameSuffix`), a `flush()` before the `plugin.shutdown`
-response, and behavioral tests (restart reuse, imported-API change parity, two isolates in
-one directory). I can upload the port if that is useful.
+open question from this thread. The `EvictingFileByteStore` documentation already says
+plugins should use a plain `FileByteStore` and leave eviction to the server, and the
+server's start-up scan plus its write-triggered scans do bound the directory (plugin
+writes correlate with host writes, since both analyze the same changes); the port keeps
+that design. If an independent budget is preferred, a plugin-owned subdirectory with its
+own `EvictingFileByteStore` is a small variation. I can upload the port if that is useful.

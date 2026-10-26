@@ -26,6 +26,11 @@ the host: `byte-store-scan` skips the server's start-up scan of its cache direct
 2 s per run on a 4.7 GB cache), and `plugin-build-key` stops recompiling the plugin for
 every checkout of the same project (12 to 30 s each).
 
+For orientation, the complete `dart analyze --fatal-infos` of the fixture with the pinned
+stable Dart 3.13.7 (`results/fixture-clean.jsonl`): 6.1 s with the plugin, 1.0 s without it
+on a warm cache, 5.4 s without it on an emptied cache; the plugin run is a warm host
+running concurrently with a cold plugin isolate.
+
 Why the plugin is slow today: it runs a second, complete analyzer in its own isolate with
 no persistent cache, so every `dart analyze` relinks the whole import closure (on the private
 workspace: 4.3 s reading and parsing 6,697 files, 5.4 s linking 3,359 library cycles, 2.6 s
