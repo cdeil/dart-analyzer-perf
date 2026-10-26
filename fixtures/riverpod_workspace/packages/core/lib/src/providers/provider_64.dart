@@ -48,7 +48,10 @@ class Selection64Notifier extends Notifier<String?> {
 }
 
 final selection64Provider =
-    NotifierProvider<Selection64Notifier, String?>(Selection64Notifier.new);
+    NotifierProvider<Selection64Notifier, String?>(
+  Selection64Notifier.new,
+  isAutoDispose: !false,
+);
 
 final selectedItem64Provider = Provider<Model64?>((ref) {
   final id = ref.watch(selection64Provider);
@@ -58,4 +61,4 @@ final selectedItem64Provider = Provider<Model64?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !false);

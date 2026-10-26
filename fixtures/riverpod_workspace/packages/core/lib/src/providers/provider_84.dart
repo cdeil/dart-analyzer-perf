@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:core/src/models/model_84.dart';
+import 'package:core/src/models/model_4.dart';
 import 'package:core/src/repositories/repository_4.dart';
 
 final repository84Provider = Provider<Repository4>(
@@ -10,15 +10,15 @@ final repository84Provider = Provider<Repository4>(
   isAutoDispose: !false,
 );
 
-/// Items notifier 84: loads and edits [Model84] values.
-class Items84Notifier extends AsyncNotifier<List<Model84>> {
+/// Items notifier 84: loads and edits [Model4] values.
+class Items84Notifier extends AsyncNotifier<List<Model4>> {
   @override
-  FutureOr<List<Model84>> build() async {
+  FutureOr<List<Model4>> build() async {
     final repository = ref.watch(repository84Provider);
     return repository.list();
   }
 
-  Future<void> add(Model84 item) async {
+  Future<void> add(Model4 item) async {
     final repository = ref.read(repository84Provider);
     await repository.upsert(item);
     ref.invalidateSelf();
@@ -32,7 +32,7 @@ class Items84Notifier extends AsyncNotifier<List<Model84>> {
 }
 
 final items84Provider =
-    AsyncNotifierProvider<Items84Notifier, List<Model84>>(
+    AsyncNotifierProvider<Items84Notifier, List<Model4>>(
   Items84Notifier.new,
   isAutoDispose: !false,
 );
@@ -48,9 +48,12 @@ class Selection84Notifier extends Notifier<String?> {
 }
 
 final selection84Provider =
-    NotifierProvider<Selection84Notifier, String?>(Selection84Notifier.new);
+    NotifierProvider<Selection84Notifier, String?>(
+  Selection84Notifier.new,
+  isAutoDispose: !false,
+);
 
-final selectedItem84Provider = Provider<Model84?>((ref) {
+final selectedItem84Provider = Provider<Model4?>((ref) {
   final id = ref.watch(selection84Provider);
   final items = ref.watch(items84Provider).value ?? const [];
   if (id == null) return null;
@@ -58,4 +61,4 @@ final selectedItem84Provider = Provider<Model84?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !false);

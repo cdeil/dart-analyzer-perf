@@ -48,7 +48,10 @@ class Selection65Notifier extends Notifier<String?> {
 }
 
 final selection65Provider =
-    NotifierProvider<Selection65Notifier, String?>(Selection65Notifier.new);
+    NotifierProvider<Selection65Notifier, String?>(
+  Selection65Notifier.new,
+  isAutoDispose: !true,
+);
 
 final selectedItem65Provider = Provider<Model65?>((ref) {
   final id = ref.watch(selection65Provider);
@@ -58,4 +61,4 @@ final selectedItem65Provider = Provider<Model65?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !true);

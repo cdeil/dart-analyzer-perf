@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:core/src/models/model_100.dart';
+import 'package:core/src/models/model_20.dart';
 import 'package:core/src/repositories/repository_20.dart';
 
 final repository100Provider = Provider<Repository20>(
@@ -10,15 +10,15 @@ final repository100Provider = Provider<Repository20>(
   isAutoDispose: !true,
 );
 
-/// Items notifier 100: loads and edits [Model100] values.
-class Items100Notifier extends AsyncNotifier<List<Model100>> {
+/// Items notifier 100: loads and edits [Model20] values.
+class Items100Notifier extends AsyncNotifier<List<Model20>> {
   @override
-  FutureOr<List<Model100>> build() async {
+  FutureOr<List<Model20>> build() async {
     final repository = ref.watch(repository100Provider);
     return repository.list();
   }
 
-  Future<void> add(Model100 item) async {
+  Future<void> add(Model20 item) async {
     final repository = ref.read(repository100Provider);
     await repository.upsert(item);
     ref.invalidateSelf();
@@ -32,7 +32,7 @@ class Items100Notifier extends AsyncNotifier<List<Model100>> {
 }
 
 final items100Provider =
-    AsyncNotifierProvider<Items100Notifier, List<Model100>>(
+    AsyncNotifierProvider<Items100Notifier, List<Model20>>(
   Items100Notifier.new,
   isAutoDispose: !true,
 );
@@ -48,9 +48,12 @@ class Selection100Notifier extends Notifier<String?> {
 }
 
 final selection100Provider =
-    NotifierProvider<Selection100Notifier, String?>(Selection100Notifier.new);
+    NotifierProvider<Selection100Notifier, String?>(
+  Selection100Notifier.new,
+  isAutoDispose: !true,
+);
 
-final selectedItem100Provider = Provider<Model100?>((ref) {
+final selectedItem100Provider = Provider<Model20?>((ref) {
   final id = ref.watch(selection100Provider);
   final items = ref.watch(items100Provider).value ?? const [];
   if (id == null) return null;
@@ -58,4 +61,4 @@ final selectedItem100Provider = Provider<Model100?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !true);

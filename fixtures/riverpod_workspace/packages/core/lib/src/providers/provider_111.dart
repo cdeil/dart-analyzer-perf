@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:core/src/models/model_111.dart';
+import 'package:core/src/models/model_31.dart';
 import 'package:core/src/repositories/repository_31.dart';
 
 final repository111Provider = Provider<Repository31>(
@@ -10,15 +10,15 @@ final repository111Provider = Provider<Repository31>(
   isAutoDispose: !false,
 );
 
-/// Items notifier 111: loads and edits [Model111] values.
-class Items111Notifier extends AsyncNotifier<List<Model111>> {
+/// Items notifier 111: loads and edits [Model31] values.
+class Items111Notifier extends AsyncNotifier<List<Model31>> {
   @override
-  FutureOr<List<Model111>> build() async {
+  FutureOr<List<Model31>> build() async {
     final repository = ref.watch(repository111Provider);
     return repository.list();
   }
 
-  Future<void> add(Model111 item) async {
+  Future<void> add(Model31 item) async {
     final repository = ref.read(repository111Provider);
     await repository.upsert(item);
     ref.invalidateSelf();
@@ -32,7 +32,7 @@ class Items111Notifier extends AsyncNotifier<List<Model111>> {
 }
 
 final items111Provider =
-    AsyncNotifierProvider<Items111Notifier, List<Model111>>(
+    AsyncNotifierProvider<Items111Notifier, List<Model31>>(
   Items111Notifier.new,
   isAutoDispose: !false,
 );
@@ -48,9 +48,12 @@ class Selection111Notifier extends Notifier<String?> {
 }
 
 final selection111Provider =
-    NotifierProvider<Selection111Notifier, String?>(Selection111Notifier.new);
+    NotifierProvider<Selection111Notifier, String?>(
+  Selection111Notifier.new,
+  isAutoDispose: !false,
+);
 
-final selectedItem111Provider = Provider<Model111?>((ref) {
+final selectedItem111Provider = Provider<Model31?>((ref) {
   final id = ref.watch(selection111Provider);
   final items = ref.watch(items111Provider).value ?? const [];
   if (id == null) return null;
@@ -58,4 +61,4 @@ final selectedItem111Provider = Provider<Model111?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !false);

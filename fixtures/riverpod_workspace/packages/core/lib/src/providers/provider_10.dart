@@ -48,7 +48,10 @@ class Selection10Notifier extends Notifier<String?> {
 }
 
 final selection10Provider =
-    NotifierProvider<Selection10Notifier, String?>(Selection10Notifier.new);
+    NotifierProvider<Selection10Notifier, String?>(
+  Selection10Notifier.new,
+  isAutoDispose: !true,
+);
 
 final selectedItem10Provider = Provider<Model10?>((ref) {
   final id = ref.watch(selection10Provider);
@@ -58,4 +61,4 @@ final selectedItem10Provider = Provider<Model10?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !true);

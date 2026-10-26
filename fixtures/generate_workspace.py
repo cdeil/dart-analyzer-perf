@@ -18,7 +18,6 @@ FLUTTER_SDK_CONSTRAINT = '^3.13.0'
 
 SENTINELS = [
     ('packages/core/lib/src/providers/sentinel_public_field.dart', 'avoid_public_notifier_properties'),
-    ('packages/core/lib/src/providers/sentinel_keep_alive.dart', 'only_use_keep_alive_inside_keep_alive'),
     ('apps/app_a/lib/screens/sentinel_dispose_screen.dart', 'avoid_ref_inside_state_dispose'),
 ]
 
@@ -29,7 +28,8 @@ def write(path: Path, content: str):
 
 
 def model(i: int) -> str:
-    fields = [(f'field{j}', 'int' if j % 3 else 'String') for j in range(1, 7)]
+    fields = [('field1', 'String'), ('field2', 'int'), ('field3', 'int'),
+              ('field4', 'String'), ('field5', 'int'), ('field6', 'int')]
     ctor = ', '.join(f'required this.{n}' for n, _ in fields)
     decls = '\n'.join(f'  final {t} {n};' for n, t in fields)
     from_json = ',\n'.join(
@@ -111,8 +111,8 @@ def repository(i: int, models: int) -> str:
 
 
 def provider(i: int, models: int, repos: int) -> str:
-    m = i % models
     r = i % repos
+    m = r % models
     keep_alive = 'true' if i % 5 == 0 else 'false'
     return f'''
     import 'dart:async';
@@ -165,7 +165,10 @@ def provider(i: int, models: int, repos: int) -> str:
     }}
 
     final selection{i}Provider =
-        NotifierProvider<Selection{i}Notifier, String?>(Selection{i}Notifier.new);
+        NotifierProvider<Selection{i}Notifier, String?>(
+      Selection{i}Notifier.new,
+      isAutoDispose: !{keep_alive},
+    );
 
     final selectedItem{i}Provider = Provider<Model{m}?>((ref) {{
       final id = ref.watch(selection{i}Provider);
@@ -175,7 +178,63 @@ def provider(i: int, models: int, repos: int) -> str:
         if (item.field1 == id) return item;
       }}
       return null;
-    }});
+    }}, isAutoDispose: !{keep_alive});
+    '''
+
+
+def service(i: int) -> str:
+    return f'''
+    import 'dart:typed_data';
+
+    import 'package:dio/dio.dart';
+    import 'package:flutter/widgets.dart';
+    import 'package:flutter_svg/flutter_svg.dart';
+    import 'package:go_router/go_router.dart';
+    import 'package:image/image.dart' as img;
+    import 'package:image_picker/image_picker.dart';
+    import 'package:pdf/widgets.dart' as pw;
+    import 'package:printing/printing.dart';
+    import 'package:shared_preferences/shared_preferences.dart';
+    import 'package:url_launcher/url_launcher.dart';
+
+    /// Service {i}: touches the heavy dependencies a real app pulls into analysis.
+    class Service{i} {{
+      Service{i}(this.dio, this.preferences);
+
+      final Dio dio;
+      final SharedPreferences preferences;
+
+      Future<Map<String, Object?>> fetch(String path) async {{
+        final response = await dio.get<Map<String, Object?>>(path);
+        return response.data ?? const {{}};
+      }}
+
+      Future<void> remember(String key, String value) =>
+          preferences.setString('service{i}.$key', value);
+
+      Future<bool> open(Uri uri) => launchUrl(uri);
+
+      Future<Uint8List> render(String title) async {{
+        final document = pw.Document();
+        document.addPage(pw.Page(build: (context) => pw.Text(title)));
+        return document.save();
+      }}
+
+      img.Image? decode(Uint8List bytes) => img.decodeImage(bytes);
+
+      Future<void> printDocument(Uint8List bytes) =>
+          Printing.layoutPdf(onLayout: (format) async => bytes);
+
+      Future<XFile?> pick() => ImagePicker().pickImage(source: ImageSource.gallery);
+
+      Widget icon(String asset) => SvgPicture.asset(asset);
+
+      GoRouter router() => GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (context, state) => const SizedBox()),
+        ],
+      );
+    }}
     '''
 
 
@@ -343,6 +402,15 @@ def generate(out: Path, models: int, providers: int, widgets: int, screens: int)
       collection: ^1.19.0
       intl: ^0.20.0
       meta: ^1.16.0
+      dio: ^5.9.0
+      flutter_svg: ^2.2.0
+      go_router: ^17.0.0
+      image: ^4.5.0
+      image_picker: ^1.2.0
+      pdf: ^3.11.0
+      printing: ^5.14.0
+      shared_preferences: ^2.5.0
+      url_launcher: ^6.3.0
     dev_dependencies:
       flutter_lints: ^6.0.0
       riverpod_lint: ^3.1.9
@@ -376,20 +444,10 @@ def generate(out: Path, models: int, providers: int, widgets: int, screens: int)
     final sentinelPublicFieldProvider =
         NotifierProvider<SentinelPublicFieldNotifier, int>(SentinelPublicFieldNotifier.new);
     ''')
-    write(core / 'lib/src/providers/sentinel_keep_alive.dart', '''
-    import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-    final sentinelAutoDisposeProvider = Provider<int>((ref) => 1);
-
-    /// Sentinel: `only_use_keep_alive_inside_keep_alive` must report the keepAlive call.
-    final sentinelKeepAliveProvider = Provider<int>((ref) {
-      ref.watch(sentinelAutoDisposeProvider);
-      ref.keepAlive();
-      return 2;
-    });
-    ''')
+    for i in range(max(1, providers // 8)):
+        write(core / f'lib/src/services/service_{i}.dart', service(i))
+        exports.append(f"export 'src/services/service_{i}.dart';")
     exports.append("export 'src/providers/sentinel_public_field.dart';")
-    exports.append("export 'src/providers/sentinel_keep_alive.dart';")
     write(core / 'lib/core.dart', '/// Shared models, repositories, providers and widgets.\nlibrary;\n\n' + '\n'.join(exports) + '\n')
     for app in ('app_a', 'app_b'):
         app_dir = out / 'apps' / app

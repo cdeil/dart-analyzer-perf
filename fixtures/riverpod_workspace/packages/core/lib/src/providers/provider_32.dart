@@ -48,7 +48,10 @@ class Selection32Notifier extends Notifier<String?> {
 }
 
 final selection32Provider =
-    NotifierProvider<Selection32Notifier, String?>(Selection32Notifier.new);
+    NotifierProvider<Selection32Notifier, String?>(
+  Selection32Notifier.new,
+  isAutoDispose: !false,
+);
 
 final selectedItem32Provider = Provider<Model32?>((ref) {
   final id = ref.watch(selection32Provider);
@@ -58,4 +61,4 @@ final selectedItem32Provider = Provider<Model32?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !false);

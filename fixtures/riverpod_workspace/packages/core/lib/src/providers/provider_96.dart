@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:core/src/models/model_96.dart';
+import 'package:core/src/models/model_16.dart';
 import 'package:core/src/repositories/repository_16.dart';
 
 final repository96Provider = Provider<Repository16>(
@@ -10,15 +10,15 @@ final repository96Provider = Provider<Repository16>(
   isAutoDispose: !false,
 );
 
-/// Items notifier 96: loads and edits [Model96] values.
-class Items96Notifier extends AsyncNotifier<List<Model96>> {
+/// Items notifier 96: loads and edits [Model16] values.
+class Items96Notifier extends AsyncNotifier<List<Model16>> {
   @override
-  FutureOr<List<Model96>> build() async {
+  FutureOr<List<Model16>> build() async {
     final repository = ref.watch(repository96Provider);
     return repository.list();
   }
 
-  Future<void> add(Model96 item) async {
+  Future<void> add(Model16 item) async {
     final repository = ref.read(repository96Provider);
     await repository.upsert(item);
     ref.invalidateSelf();
@@ -32,7 +32,7 @@ class Items96Notifier extends AsyncNotifier<List<Model96>> {
 }
 
 final items96Provider =
-    AsyncNotifierProvider<Items96Notifier, List<Model96>>(
+    AsyncNotifierProvider<Items96Notifier, List<Model16>>(
   Items96Notifier.new,
   isAutoDispose: !false,
 );
@@ -48,9 +48,12 @@ class Selection96Notifier extends Notifier<String?> {
 }
 
 final selection96Provider =
-    NotifierProvider<Selection96Notifier, String?>(Selection96Notifier.new);
+    NotifierProvider<Selection96Notifier, String?>(
+  Selection96Notifier.new,
+  isAutoDispose: !false,
+);
 
-final selectedItem96Provider = Provider<Model96?>((ref) {
+final selectedItem96Provider = Provider<Model16?>((ref) {
   final id = ref.watch(selection96Provider);
   final items = ref.watch(items96Provider).value ?? const [];
   if (id == null) return null;
@@ -58,4 +61,4 @@ final selectedItem96Provider = Provider<Model96?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !false);

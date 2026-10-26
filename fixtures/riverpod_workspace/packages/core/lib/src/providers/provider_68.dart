@@ -48,7 +48,10 @@ class Selection68Notifier extends Notifier<String?> {
 }
 
 final selection68Provider =
-    NotifierProvider<Selection68Notifier, String?>(Selection68Notifier.new);
+    NotifierProvider<Selection68Notifier, String?>(
+  Selection68Notifier.new,
+  isAutoDispose: !false,
+);
 
 final selectedItem68Provider = Provider<Model68?>((ref) {
   final id = ref.watch(selection68Provider);
@@ -58,4 +61,4 @@ final selectedItem68Provider = Provider<Model68?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !false);

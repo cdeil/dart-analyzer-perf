@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:core/src/models/model_90.dart';
+import 'package:core/src/models/model_10.dart';
 import 'package:core/src/repositories/repository_10.dart';
 
 final repository90Provider = Provider<Repository10>(
@@ -10,15 +10,15 @@ final repository90Provider = Provider<Repository10>(
   isAutoDispose: !true,
 );
 
-/// Items notifier 90: loads and edits [Model90] values.
-class Items90Notifier extends AsyncNotifier<List<Model90>> {
+/// Items notifier 90: loads and edits [Model10] values.
+class Items90Notifier extends AsyncNotifier<List<Model10>> {
   @override
-  FutureOr<List<Model90>> build() async {
+  FutureOr<List<Model10>> build() async {
     final repository = ref.watch(repository90Provider);
     return repository.list();
   }
 
-  Future<void> add(Model90 item) async {
+  Future<void> add(Model10 item) async {
     final repository = ref.read(repository90Provider);
     await repository.upsert(item);
     ref.invalidateSelf();
@@ -32,7 +32,7 @@ class Items90Notifier extends AsyncNotifier<List<Model90>> {
 }
 
 final items90Provider =
-    AsyncNotifierProvider<Items90Notifier, List<Model90>>(
+    AsyncNotifierProvider<Items90Notifier, List<Model10>>(
   Items90Notifier.new,
   isAutoDispose: !true,
 );
@@ -48,9 +48,12 @@ class Selection90Notifier extends Notifier<String?> {
 }
 
 final selection90Provider =
-    NotifierProvider<Selection90Notifier, String?>(Selection90Notifier.new);
+    NotifierProvider<Selection90Notifier, String?>(
+  Selection90Notifier.new,
+  isAutoDispose: !true,
+);
 
-final selectedItem90Provider = Provider<Model90?>((ref) {
+final selectedItem90Provider = Provider<Model10?>((ref) {
   final id = ref.watch(selection90Provider);
   final items = ref.watch(items90Provider).value ?? const [];
   if (id == null) return null;
@@ -58,4 +61,4 @@ final selectedItem90Provider = Provider<Model90?>((ref) {
     if (item.field1 == id) return item;
   }
   return null;
-});
+}, isAutoDispose: !true);
