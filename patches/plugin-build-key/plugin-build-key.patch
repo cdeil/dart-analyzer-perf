@@ -1,0 +1,100 @@
+diff --git a/pkg/analysis_server/lib/src/plugin/plugin_manager.dart b/pkg/analysis_server/lib/src/plugin/plugin_manager.dart
+index e36a3d28cf4..889d06ff567 100644
+--- a/pkg/analysis_server/lib/src/plugin/plugin_manager.dart
++++ b/pkg/analysis_server/lib/src/plugin/plugin_manager.dart
+@@ -408,16 +408,19 @@ class PluginManager {
+     ];
+   }
+ 
+-  /// Returns the "plugin state" folder for a plugin at [pluginPath].
++  /// Returns the "plugin state" folder for the plugin package identified by
++  /// [key]: the path of a legacy plugin, or the generated pubspec of a shared
++  /// plugin package, so that every context root enabling the same plugins
++  /// from the same sources shares one resolved and compiled package.
+   ///
+   /// This is a directory under the state location for '.plugin_manager', named
+-  /// with a hash based on [pluginPath] and the version of the Dart SDK.
+-  Folder pluginStateFolder(String pluginPath) {
++  /// with a hash based on [key] and the version of the Dart SDK.
++  Folder pluginStateFolder(String key) {
+     var stateFolder = _resourceProvider.getStateLocation('.plugin_manager');
+     if (stateFolder == null) {
+       throw PluginException('No state location, so plugin could not be copied');
+     }
+-    var stateName = _uniqueDirectoryName(pluginPath);
++    var stateName = _uniqueDirectoryName(key);
+     return stateFolder.getFolder(stateName);
+   }
+ 
+diff --git a/pkg/analysis_server/lib/src/plugin/plugin_watcher.dart b/pkg/analysis_server/lib/src/plugin/plugin_watcher.dart
+index 375d91fa54f..4732c8a15ff 100644
+--- a/pkg/analysis_server/lib/src/plugin/plugin_watcher.dart
++++ b/pkg/analysis_server/lib/src/plugin/plugin_watcher.dart
+@@ -179,12 +179,11 @@ class PluginWatcher implements DriverWatcher {
+             : groupDependencyOverrides,
+       );
+ 
+-      // TODO(srawlins): Better to name the folder based on a hash of the...
+-      // maybe the plugin names. Maybe the configutations.
+-      var folderName = groups.length == 1
+-          ? contextRoot.root.path
+-          : '${contextRoot.root.path}_group_$i';
+-      var sharedPluginFolder = manager.pluginStateFolder(folderName);
++      // The folder is named by the generated pubspec, so that every context
++      // root that enables the same plugins from the same sources shares one
++      // resolved and compiled plugin package.
++      var newPubspecContent = packageGenerator.generatePubspec();
++      var sharedPluginFolder = manager.pluginStateFolder(newPubspecContent);
+ 
+       manager.instrumentationService.logInfo(
+         "Creating shared plugin folder at '${sharedPluginFolder.path}' for "
+@@ -196,7 +195,6 @@ class PluginWatcher implements DriverWatcher {
+       );
+       sharedPluginFolder.create();
+       var pubspecFile = sharedPluginFolder.getFile(file_paths.pubspecYaml);
+-      var newPubspecContent = packageGenerator.generatePubspec();
+       // Only write the pubspec if it is different, to support caching.
+       if (!pubspecFile.exists ||
+           newPubspecContent != pubspecFile.readAsStringSync()) {
+diff --git a/pkg/analysis_server/lib/src/utilities/mocks.dart b/pkg/analysis_server/lib/src/utilities/mocks.dart
+index 89530d0013e..61263fc7551 100644
+--- a/pkg/analysis_server/lib/src/utilities/mocks.dart
++++ b/pkg/analysis_server/lib/src/utilities/mocks.dart
+@@ -348,9 +348,13 @@ class TestPluginManager(final ResourceProvider resourceProvider)
+       throw Exception('Unexpected invocation of ${invocation.memberName}');
+ 
+   @override
+-  Folder pluginStateFolder(String contextRootPath) {
++  Folder pluginStateFolder(String key) {
++    var pathContext = resourceProvider.pathContext;
+     return resourceProvider.getFolder(
+-      resourceProvider.pathContext.join(contextRootPath, '.plugin_state'),
++      pathContext.join(
++        '${pathContext.separator}plugin_state',
++        (key.hashCode & 0x7fffffff).toRadixString(16),
++      ),
+     );
+   }
+ 
+diff --git a/pkg/analysis_server/test/src/plugin/plugin_watcher_test.dart b/pkg/analysis_server/test/src/plugin/plugin_watcher_test.dart
+index 0b8afcf658b..3fdcc5f62aa 100644
+--- a/pkg/analysis_server/test/src/plugin/plugin_watcher_test.dart
++++ b/pkg/analysis_server/test/src/plugin/plugin_watcher_test.dart
+@@ -134,11 +134,15 @@ plugins:
+ 
+     expect(manager.pluginIsolates, hasLength(2));
+ 
++    String pubspecOf(PluginIsolate isolate) =>
++        getFolder(isolate.pluginId).getFile('pubspec.yaml').readAsStringSync();
++    // The plugin folders are named by their content; the group with the
++    // inner options' `foo: ^2.0.0` comes first.
+     var isolate0 = manager.pluginIsolates.firstWhere(
+-      (e) => !e.pluginId.contains('_group_1'),
++      (e) => pubspecOf(e).contains('2.0.0'),
+     ) as TestPluginIsolate;
+     var isolate1 = manager.pluginIsolates.firstWhere(
+-      (e) => e.pluginId.contains('_group_1'),
++      (e) => pubspecOf(e).contains('1.0.0'),
+     ) as TestPluginIsolate;
+ 
+     var setConfigurations0 =

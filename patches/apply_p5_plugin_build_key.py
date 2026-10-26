@@ -108,8 +108,40 @@ def patch_mock(sdk: Path):
     print('patched', f)
 
 
+def patch_watcher_test(sdk: Path):
+    """The conflicting-plugins test told the two plugin groups apart by a
+    `_group_1` substring of the folder path; folders are now named by content,
+    so it identifies them by the plugin constraint in each folder's pubspec."""
+    f = sdk / 'pkg/analysis_server/test/src/plugin/plugin_watcher_test.dart'
+    s = f.read_text()
+    s = replace_once(
+        s,
+        """    var isolate0 = manager.pluginIsolates.firstWhere(
+      (e) => !e.pluginId.contains('_group_1'),
+    ) as TestPluginIsolate;
+    var isolate1 = manager.pluginIsolates.firstWhere(
+      (e) => e.pluginId.contains('_group_1'),
+    ) as TestPluginIsolate;
+""",
+        """    String pubspecOf(PluginIsolate isolate) =>
+        getFolder(isolate.pluginId).getFile('pubspec.yaml').readAsStringSync();
+    // The plugin folders are named by their content; the group with the
+    // inner options' `foo: ^2.0.0` comes first.
+    var isolate0 = manager.pluginIsolates.firstWhere(
+      (e) => pubspecOf(e).contains('2.0.0'),
+    ) as TestPluginIsolate;
+    var isolate1 = manager.pluginIsolates.firstWhere(
+      (e) => pubspecOf(e).contains('1.0.0'),
+    ) as TestPluginIsolate;
+""",
+    )
+    f.write_text(s)
+    print('patched', f)
+
+
 if __name__ == '__main__':
     sdk = Path(sys.argv[1])
     patch_watcher(sdk)
     patch_manager_doc(sdk)
     patch_mock(sdk)
+    patch_watcher_test(sdk)
