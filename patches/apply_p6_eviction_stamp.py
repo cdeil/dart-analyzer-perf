@@ -174,6 +174,17 @@ def patch_store_testing_hooks(sdk: Path):
   Future<void> _requestCacheCleanUp() async {
 """,
     )
+    s = replace_once(
+        s,
+        """    if (_bytesWrittenSinceCleanup > _maxSizeBytes ~/ 8) {
+      _requestCacheCleanUp();
+    }
+""",
+        """    if (_bytesWrittenSinceCleanup > _maxSizeBytes ~/ 8) {
+      unawaited(_requestCacheCleanUp());
+    }
+""",
+    )
     f.write_text(s)
 
 
