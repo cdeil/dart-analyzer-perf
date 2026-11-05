@@ -1,6 +1,6 @@
 # Draft comment for dart-lang/sdk#63244 (plugin compiled per consumer)
 
-Status: DRAFT (5 November 2026), optional, after the #64202 comment. Not posted.
+Status: prefilled in Chrome for review (5 November 2026).
 
 ---
 

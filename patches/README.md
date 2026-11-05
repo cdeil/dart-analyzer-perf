@@ -15,10 +15,10 @@ plugin reports that analysis is complete.
 
 | # | Branch | Status | Fixture result (plugin isolate, seconds to idle) |
 | --- | --- | --- | --- |
-| 1 | `plugin-byte-store` | tests pass (49), analyzer clean | main: 4.4, 4.7 cold. Branch: 5.1 cold (first run writes 88 MB), **1.55, 1.57 warm**, identical findings |
-| 2 | `driver-recent-libraries` | tests pass (full driver suite 1,294, plugin 47), analyzer clean | `ResolvedUnitResult` events 1,330 → 665, `analyzeFile` 1,330 → 665; cold 4.1 to 4.5 (main 4.4 to 4.7); warm with the probe's file store 1.32 to 1.36 (main 1.54 to 1.57) |
+| 1 | `plugin-byte-store` | **uploaded: CL 574481** (5 Nov); tests pass (49), analyzer clean | main: 4.4, 4.7 cold. Branch: 5.1 cold (first run writes 88 MB), **1.55, 1.57 warm**, identical findings |
+| 2 | `driver-recent-libraries` | **uploaded: CL 574462** (5 Nov, issue #64862); tests pass (driver suite 1,303, plugin 47), analyzer clean | `ResolvedUnitResult` events 1,330 → 665, `analyzeFile` 1,330 → 665; cold 4.1 to 4.5 (main 4.4 to 4.7); warm with the probe's file store 1.32 to 1.36 (main 1.54 to 1.57) |
 | 3 | `plugin-fine-dependencies` | **withdrawn**: the server already defaults to fine dependencies (since 3.12), so mirroring it changes nothing; measured numbers were with the setting forced off. Tests passed (plugin 49, plugin_isolate 23, plugin_manager 36, analyzer_plugin 1,183), analysis clean | plugin defaults to the host's setting (off): cold 3.4, 3.8 (main 4.4 to 4.7); warm with the probe's file store 1.28 to 1.30 (main 1.54 to 1.57); `computeManifests` gone, `link` 1.67 → 1.35 s |
-| 4 | `byte-store-scan` | candidate, after the plugin store: tests pass (8), analyzer clean | `bench/scan_cost.sh`: 330,000 extra cache files cost 0.6 to 0.8 s per warm `dart analyze` (1.05 → 1.63 to 1.85 s); the branch skips that scan when one finished within the hour |
+| 4 | `byte-store-scan` | held back: an hour without start-up scans lets many short processes grow the cache unchecked; tests pass (8) | `bench/scan_cost.sh`: 330,000 extra cache files cost 0.6 to 0.8 s per warm `dart analyze` (1.05 → 1.63 to 1.85 s); the branch skips that scan when one finished within the hour |
 | 5 | `plugin-build-key` | **discussion only**: upstream CL 569682 (27 Oct) chose context root + pubspec hash as the folder name; raise on #63244. Tests passed (watcher 10, manager 36) | server-side; no probe measurement (saves the 12 to 30 s plugin compile per additional checkout of the same project) |
 | 1+2+3 | `plugin-perf-combined` | superseded: includes the withdrawn branch 3 | cold 3.7; warm 1.10 to 1.17, but only with fine dependencies forced off; with the default, branches 1+2 give 1.32 to 1.36 warm |
 
