@@ -1,6 +1,6 @@
 # Draft issue: analysis_server_plugin enables fine-grained dependencies unconditionally
 
-Status: DRAFT, not filed. Component: `analysis_server_plugin`, `analysis_server`.
+Status: WITHDRAWN (5 November 2026). The premise is wrong: the analysis server defaults to `--with-fine-dependencies` since Dart 3.12 (CL 462540), so the plugin already mirrors it. Not to be filed. Component: `analysis_server_plugin`, `analysis_server`.
 
 ## Title
 

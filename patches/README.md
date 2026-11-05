@@ -17,10 +17,10 @@ plugin reports that analysis is complete.
 | --- | --- | --- | --- |
 | 1 | `plugin-byte-store` | tests pass (49), analyzer clean | main: 4.4, 4.7 cold. Branch: 5.1 cold (first run writes 88 MB), **1.55, 1.57 warm**, identical findings |
 | 2 | `driver-recent-libraries` | tests pass (full driver suite 1,294, plugin 47), analyzer clean | `ResolvedUnitResult` events 1,330 → 665, `analyzeFile` 1,330 → 665; cold 4.1 to 4.5 (main 4.4 to 4.7); warm with the probe's file store 1.32 to 1.36 (main 1.54 to 1.57) |
-| 3 | `plugin-fine-dependencies` | tests pass (plugin 49, plugin_isolate 23, plugin_manager 36, analyzer_plugin 1,183), analysis clean | plugin defaults to the host's setting (off): cold 3.4, 3.8 (main 4.4 to 4.7); warm with the probe's file store 1.28 to 1.30 (main 1.54 to 1.57); `computeManifests` gone, `link` 1.67 → 1.35 s |
-| 4 | `byte-store-scan` | tests pass (8), analyzer clean | not a plugin-side change; saves the start-up directory scan of the server's cache (about 2 s on a 4.7 GB cache in the real-checkout runs) |
-| 5 | `plugin-build-key` | tests pass (watcher 10, manager 36), analysis clean | server-side; no probe measurement (saves the 12 to 30 s plugin compile per additional checkout of the same project) |
-| 1+2+3 | `plugin-perf-combined` | tests pass (plugin 51, driver 16), analysis clean | cold 3.7; **warm 1.10 to 1.17** (main as shipped 4.4 to 4.7); every store lookup a hit, identical findings |
+| 3 | `plugin-fine-dependencies` | **withdrawn**: the server already defaults to fine dependencies (since 3.12), so mirroring it changes nothing; measured numbers were with the setting forced off. Tests passed (plugin 49, plugin_isolate 23, plugin_manager 36, analyzer_plugin 1,183), analysis clean | plugin defaults to the host's setting (off): cold 3.4, 3.8 (main 4.4 to 4.7); warm with the probe's file store 1.28 to 1.30 (main 1.54 to 1.57); `computeManifests` gone, `link` 1.67 → 1.35 s |
+| 4 | `byte-store-scan` | **not proposed**: tests pass (8), but `bench/scan_cost.sh` shows no wall-time cost of the start-up scan to remove | — |
+| 5 | `plugin-build-key` | **discussion only**: upstream CL 569682 (27 Oct) chose context root + pubspec hash as the folder name; raise on #63244. Tests passed (watcher 10, manager 36) | server-side; no probe measurement (saves the 12 to 30 s plugin compile per additional checkout of the same project) |
+| 1+2+3 | `plugin-perf-combined` | superseded: includes the withdrawn branch 3 | cold 3.7; warm 1.10 to 1.17, but only with fine dependencies forced off; with the default, branches 1+2 give 1.32 to 1.36 warm |
 
 ## 1. `plugin-byte-store`
 

@@ -14,17 +14,30 @@ of 26 October 2026 as runtime:
 
 | Configuration | First run | Later runs | Findings |
 | --- | --- | --- | --- |
-| `analysis_server_plugin` as shipped (memory-only cache, fine dependencies on) | 4.4 to 4.7 | 4.4 to 4.7 | 2 |
+| `analysis_server_plugin` as shipped (memory-only cache) | 4.4 to 4.7 | 4.4 to 4.7 | 2 |
 | + persistent `FileByteStore` (branch `plugin-byte-store`, dart-lang/sdk#64202) | 5.1 | 1.55 | 2 |
-| + plugin mirrors the host's fine-dependency setting (`plugin-fine-dependencies`) | 3.4 to 3.8 | 1.3 | 2 |
-| + driver keeps recently resolved libraries (`driver-recent-libraries`) | 3.7 | **1.1 to 1.2** | 2 |
+| + driver keeps recently resolved libraries (`driver-recent-libraries`) | 4.4 | **1.32 to 1.36** | 2 |
 
-The same mechanisms on a private 7,481-file Flutter workspace: plugin isolate 12.5 to 15.7 s
-today; 2.0 to 2.5 s warm with the first two changes. Diagnostics are identical in every
-configuration (`results/*.jsonl` keep the sorted identities). Two further branches address
-the host: `byte-store-scan` skips the server's start-up scan of its cache directory (about
-2 s per run on a 4.7 GB cache), and `plugin-build-key` stops recompiling the plugin for
-every checkout of the same project (12 to 30 s each).
+The same mechanism on a private 7,481-file Flutter workspace: plugin isolate 12.5 to 15.7 s
+today, 3.0 to 3.8 s warm with a persistent store. Diagnostics are identical in every
+configuration (`results/*.jsonl` keep the sorted identities).
+
+## Corrections (5 November 2026)
+
+- The analysis server has run with fine-grained dependencies **on** by default since Dart
+  3.12 (CL 462540, "Fine. Enable by default in DAS"), including the 3.13.7 server measured
+  here. An earlier version of this repository said the opposite and proposed making the
+  plugin "mirror the host's setting"; that change would change nothing and is withdrawn
+  (branch `plugin-fine-dependencies`). The fine-dependency bookkeeping measured in the
+  plugin (2.6 s cold on the private workspace) is real, but it is the analyzer's design;
+  persisting the plugin's store is what lets it pay off.
+- The claim that a large server cache directory costs about 2 s per `dart analyze` run
+  through the start-up eviction scan is not supported by a direct test
+  (`bench/scan_cost.sh`): 330,000 extra files cost CPU in the background clean-up isolate
+  but no measurable wall time. Branch `byte-store-scan` is not proposed upstream.
+- Upstream CL 569682 (27 October) now names plugin folders by context root plus a hash of
+  the generated pubspec. Branch `plugin-build-key` (drop the context root from the name so
+  worktrees share one build) is a discussion item for dart-lang/sdk#63244, not a change.
 
 For orientation, the complete `dart analyze --fatal-infos` of the fixture with the pinned
 stable Dart 3.13.7 (`results/fixture-clean.jsonl`): 6.1 s with the plugin, 1.0 s without it

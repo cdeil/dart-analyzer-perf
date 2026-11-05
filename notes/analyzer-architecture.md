@@ -129,8 +129,10 @@ library (`computeManifests`) and records a `RequirementsManifest` during linking
 resolution (every element access goes through `globalResultRequirements`). Diagnostics
 bundles then carry requirements so that an edit only invalidates results that actually
 used the changed API. This is an editor optimisation; in a fresh process whose byte store
-does not persist it is pure cost. The host runs with fine dependencies off unless started
-with `--with-fine-dependencies`.
+does not persist it is pure cost. The host runs with the same setting: `--with-fine-dependencies`
+has defaulted to true since Dart 3.12 (CL 462540), so the host pays the same bookkeeping on a
+cold run but keeps it in its persistent store. (Corrected on 5 November 2026; an earlier
+version said the host ran with fine dependencies off.)
 
 ### 4.4 Byte stores and eviction
 
@@ -141,8 +143,9 @@ and after every `maxSize/8` bytes written, deleting the least recently *accessed
 (`FileStat.accessed`) until the directory is under budget (4 GiB by default in the analysis
 server); whether a read refreshes that timestamp depends on the file system's atime policy. A
 busy IDE on several worktrees and SDK versions keeps the directory at the budget (this
-machine: 4.7 GB, 332k files, 220k of them written in the last week), and the startup scan
-of such a directory costs the warm host about 2 s per CLI run. `SingleFileByteStore`
+machine: 4.7 GB, 332k files, 220k of them written in the last week). The start-up scan of
+such a directory runs in its own isolate; `bench/scan_cost.sh` shows it costs system CPU
+but no measurable wall time (corrected on 5 November 2026). `SingleFileByteStore`
 (CL 543760, merged) is a paged single-file alternative, not yet wired to the server by
 default.
 
@@ -151,13 +154,13 @@ default.
 | Lever | Component | Status |
 | --- | --- | --- |
 | Persistent byte store for the plugin | analysis_server_plugin | SDK #64202, CL 543560 (unreviewed PS1) |
-| Fine dependencies off unless the host uses them | analysis_server_plugin + analyzer_plugin protocol | not filed |
+| ~~Fine dependencies off unless the host uses them~~ | — | withdrawn: the host defaults to on |
 | Resolve each library once | analyzer driver or analysis_server_plugin | not filed; related CL 543140, #64381 |
 | Cache plugin diagnostics with the driver's unit signature | analysis_server_plugin + analyzer | not filed |
 | Key plugin builds by content, not consumer path | analysis_server plugin manager | SDK #63244 |
 | Skip unchanged files by metadata | analyzer FileContentCache | not filed; related #64065 / CL 538901 (BLAKE3) |
 | Single-file byte store for the plugin | analyzer / analysis_server_plugin | CL 543760 merged standalone |
-| Skip the startup eviction scan when the last one was recent | analyzer EvictingFileByteStore | not filed |
+| ~~Skip the startup eviction scan when the last one was recent~~ | — | no measured wall-time benefit |
 | Parallel unlinked phase, parallel linking | analyzer | research; CL 559340, 542560 in flight |
 
 ## 6. A second public data point: the ROHD reproducer
