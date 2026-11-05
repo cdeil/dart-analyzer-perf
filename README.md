@@ -31,10 +31,12 @@ configuration (`results/*.jsonl` keep the sorted identities).
   (branch `plugin-fine-dependencies`). The fine-dependency bookkeeping measured in the
   plugin (2.6 s cold on the private workspace) is real, but it is the analyzer's design;
   persisting the plugin's store is what lets it pay off.
-- The claim that a large server cache directory costs about 2 s per `dart analyze` run
-  through the start-up eviction scan is not supported by a direct test
-  (`bench/scan_cost.sh`): 330,000 extra files cost CPU in the background clean-up isolate
-  but no measurable wall time. Branch `byte-store-scan` is not proposed upstream.
+- The cost of the server's start-up eviction scan was estimated at about 2 s per run from
+  the real checkout, which mixed in other effects. The direct test (`bench/scan_cost.sh`,
+  `results/scan-cost.jsonl`) on the fixture: a settled warm `dart analyze --no-plugins`
+  takes 1.05 to 1.09 s; with 330,000 extra files in the cache directory 1.63 to 1.85 s;
+  after removing them again 1.07 to 1.16 s. So the scan costs 0.6 to 0.8 s per run at that
+  size. Branch `byte-store-scan` stays a candidate, behind the plugin store.
 - Upstream CL 569682 (27 October) now names plugin folders by context root plus a hash of
   the generated pubspec. Branch `plugin-build-key` (drop the context root from the name so
   worktrees share one build) is a discussion item for dart-lang/sdk#63244, not a change.

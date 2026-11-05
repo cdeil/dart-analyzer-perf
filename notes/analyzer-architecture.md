@@ -144,8 +144,8 @@ and after every `maxSize/8` bytes written, deleting the least recently *accessed
 server); whether a read refreshes that timestamp depends on the file system's atime policy. A
 busy IDE on several worktrees and SDK versions keeps the directory at the budget (this
 machine: 4.7 GB, 332k files, 220k of them written in the last week). The start-up scan of
-such a directory runs in its own isolate; `bench/scan_cost.sh` shows it costs system CPU
-but no measurable wall time (corrected on 5 November 2026). `SingleFileByteStore`
+such a directory runs in its own isolate but still costs wall time: `bench/scan_cost.sh`
+measures 0.6 to 0.8 s per warm run with 330,000 extra files (1.05 → 1.63 to 1.85 s). `SingleFileByteStore`
 (CL 543760, merged) is a paged single-file alternative, not yet wired to the server by
 default.
 
@@ -160,7 +160,7 @@ default.
 | Key plugin builds by content, not consumer path | analysis_server plugin manager | SDK #63244 |
 | Skip unchanged files by metadata | analyzer FileContentCache | not filed; related #64065 / CL 538901 (BLAKE3) |
 | Single-file byte store for the plugin | analyzer / analysis_server_plugin | CL 543760 merged standalone |
-| ~~Skip the startup eviction scan when the last one was recent~~ | — | no measured wall-time benefit |
+| Skip the startup eviction scan when the last one was recent | analyzer EvictingFileByteStore | not filed; 0.6 to 0.8 s per run on a 330k-file cache |
 | Parallel unlinked phase, parallel linking | analyzer | research; CL 559340, 542560 in flight |
 
 ## 6. A second public data point: the ROHD reproducer
