@@ -4,6 +4,7 @@ The copy is written to DEST (never into the pub cache). The probes do not change
 run or what they report; they only add counters, timing and switches:
 
   PROBE_BYTE_STORE=<dir>   back the 256 MiB memory cache with a FileByteStore in <dir>
+  PROBE_EVICTING=1         use an EvictingFileByteStore (4 GiB budget) there instead
                            (only on sources that still use NullByteStore)
   PROBE_FINE_DEPS=0        create the analysis context with withFineDependencies: false
   PROBE_PRIORITY_ALL=1     mark every analyzed file as a priority file (single resolution)
@@ -141,8 +142,10 @@ def patch(source: Path, dest: Path, tolerant: bool = False):
         """  static final String? probeByteStorePath =
       Platform.environment['PROBE_BYTE_STORE'];
 
-  late final FileByteStore? _probeFileByteStore = probeByteStorePath == null
+  late final ByteStore? _probeFileByteStore = probeByteStorePath == null
       ? null
+      : Platform.environment['PROBE_EVICTING'] == '1'
+      ? EvictingFileByteStore(probeByteStorePath!, 4 * 1024 * 1024 * 1024)
       : FileByteStore(probeByteStorePath!, tempNameSuffix: 'probe');
 
   late final ByteStore _byteStore = MemoryCachingByteStore(
@@ -341,7 +344,9 @@ def patch(source: Path, dest: Path, tolerant: bool = False):
         """        await Future.wait(
           _plugins.map((p) => p.shutDown()).whereType<Future<Object?>>(),
         );
-        await _probeFileByteStore?.flush();
+        var probeStore = _probeFileByteStore;
+        if (probeStore is FileByteStore) await probeStore.flush();
+        if (probeStore is EvictingFileByteStore) await probeStore.flush();
         _channel.sendResponse(
 """,
     )
