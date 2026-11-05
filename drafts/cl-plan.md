@@ -1,15 +1,19 @@
 # CL plan
 
-Status: DRAFT. Each entry is one Gerrit change against `main`, uploaded with `git cl upload`
-after the CLA is signed. Order matters: later entries build on earlier ones. Dart CL
+Status (5 November 2026): CLA signed, Gerrit account and `git credential-luci` login set up
+for deil.christoph@googlemail.com, which is the commit email in the SDK checkout. Dart's
+Gerrit disables private changes, so a first upload is a public work-in-progress change; we
+wait for an answer on #64202 before uploading branch 1. Branch 2 now links #64862.
+
+Each entry is one Gerrit change against `main`, uploaded with `git cl upload`. Order matters: later entries build on earlier ones. Dart CL
 descriptions are short, name the bug (`Bug: https://github.com/dart-lang/sdk/issues/N`) and
 the test that was run (`TEST=`), and never contain generated planning text.
 
 | # | Branch | Change | Bug | Depends on |
 | --- | --- | --- | --- | --- |
 | 1 | `plugin-byte-store` | `[analysis_server_plugin] Persist the plugin byte store with a FileByteStore` | #64202 (continues CL 543560 PS1, credit its author) | — |
-| 2 | `driver-recent-libraries` | `[analyzer] Cache the most recently resolved libraries in AnalysisDriver` | new issue (double resolution) | — |
-| 3 | `plugin-fine-dependencies` | `[analysis_server_plugin] Mirror the server's fine-dependency setting in plugins` | new issue (fine dependencies) | protocol regeneration (done on the branch) |
+| 2 | `driver-recent-libraries` | `[analyzer] Cache the most recently resolved libraries in AnalysisDriver` | #64862 | — |
+| 3 | ~~`plugin-fine-dependencies`~~ | withdrawn: the server already defaults to fine dependencies | — | — |
 | 4 | `byte-store-scan` | `[analyzer] Skip the start-up cache scan after a recent clean up` | new issue (startup eviction scan) | — |
 | 5 | `plugin-build-key` | `[analysis_server] Key plugin builds by their generated pubspec, not by consumer path` | #63244 | — |
 

@@ -1,7 +1,7 @@
 # Draft issue: analysis_server_plugin resolves every library twice
 
-Status: READY FOR REVIEW (5 November 2026), prefilled in Chrome with the "Report an issue
-with Dart's static analysis" template. Numbers re-checked against `results/`; the code paths
+Status: FILED 5 November 2026 as https://github.com/dart-lang/sdk/issues/64862 (template "Report an issue
+with Dart's static analysis"). Numbers re-checked against `results/`; the code paths
 are unchanged on main d0c6cbc8213 (5 November).
 
 ## Title

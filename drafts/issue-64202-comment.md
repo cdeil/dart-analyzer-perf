@@ -1,8 +1,6 @@
 # Draft comment for dart-lang/sdk#64202 (persistent ByteStore in analyzer plugins)
 
-Status: READY FOR REVIEW (5 November 2026), prefilled in Chrome. Every number is in
-`results/` of this repository or in the October review of the private app. Post this
-before uploading the CL.
+Status: POSTED 5 November 2026: https://github.com/dart-lang/sdk/issues/64202#issuecomment-6660053572
 
 ---
 
